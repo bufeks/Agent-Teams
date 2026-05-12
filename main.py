@@ -12,6 +12,7 @@ import sys
 
 from dotenv import load_dotenv
 
+import knowledge_base
 from agent_team import CreativeTeam
 
 load_dotenv()
@@ -56,6 +57,7 @@ def run_demo(brief_index: int | None = None) -> None:
         print("Error: ANTHROPIC_API_KEY が未設定です。.env.example を .env にコピーしてAPIキーを設定してください。")
         sys.exit(1)
 
+    print(knowledge_base.summary())
     team = CreativeTeam(api_key=api_key)
 
     briefs_to_run = [DEMO_BRIEFS[brief_index]] if brief_index is not None else DEMO_BRIEFS
@@ -76,6 +78,7 @@ def run_custom(brief: str) -> None:
         print("Error: ANTHROPIC_API_KEY が未設定です。")
         sys.exit(1)
 
+    print(knowledge_base.summary())
     team = CreativeTeam(api_key=api_key)
     result = team.run(brief, verbose=True)
     print(result.summary())

@@ -5,19 +5,18 @@ Hierarchy:
   ECD (orchestrator)
   ├── Researcher
   ├── Strategic Planner
-  ├── Planner
   └── CD (sub-orchestrator)
+      ├── Activation Planner
       ├── CopyWriter
       └── Art Director
 
-The ECD delegates upstream thinking to Researcher / Strategic Planner / Planner,
-then hands the creative challenge to the CD. The CD runs its own internal loop,
-briefing CopyWriter and Art Director before delivering the finished creative work
-back to the ECD.
+knowledge/ フォルダに PDF・PPT・TXT を置くと全エージェントの前提知識になる。
 """
 
 import os
 from dataclasses import dataclass, field
+
+import knowledge_base
 from typing import Any
 
 import anthropic
@@ -58,10 +57,14 @@ class SpecialistAgent:
         self.name = name
         self.system_prompt = system_prompt
 
-    def run(self, task: str, context: str = "") -> AgentResult:
-        user_content = task
+    def run(self, task: str, context: str = "", knowledge: str = "") -> AgentResult:
+        parts = []
+        if knowledge:
+            parts.append(knowledge)
         if context:
-            user_content = f"Team context:\n{context}\n\nYour task:\n{task}"
+            parts.append(f"Team context:\n{context}")
+        parts.append(f"Your task:\n{task}")
+        user_content = "\n\n".join(parts)
 
         try:
             response = self.client.messages.create(
@@ -270,24 +273,29 @@ class CDAgent:
         tool_name: str,
         tool_input: dict[str, Any],
         accumulated: list[AgentResult],
+        knowledge: str = "",
     ) -> AgentResult:
         key = tool_name.replace("brief_", "")
-        key = key  # activation_planner / copywriter / art_director
         agent = self.specialists[key]
         context = self._build_context(accumulated) if tool_input.get("include_context", True) else ""
         print(f"    → CD briefs {agent.name}: {tool_input['task'][:70]}...")
-        result = agent.run(tool_input["task"], context)
+        result = agent.run(tool_input["task"], context, knowledge)
         print(f"      ✓ {agent.name} delivered ({len(result.output)} chars)")
         return result
 
-    def run(self, task: str, context: str = "") -> AgentResult:
+    def run(self, task: str, context: str = "", knowledge: str = "") -> AgentResult:
         """Run the CD sub-orchestrator loop and return a consolidated AgentResult."""
-        user_content = task
+        parts = []
+        if knowledge:
+            parts.append(knowledge)
         if context:
-            user_content = f"Strategic context from upstream:\n{context}\n\nYour creative challenge:\n{task}"
+            parts.append(f"Strategic context from upstream:\n{context}")
+        parts.append(f"Your creative challenge:\n{task}")
+        user_content = "\n\n".join(parts)
 
         messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
         sub_results: list[AgentResult] = []
+
 
         try:
             while True:
@@ -324,7 +332,7 @@ class CDAgent:
 
                 tool_results = []
                 for tb in tool_blocks:
-                    result = self._dispatch(tb.name, tb.input, sub_results)
+                    result = self._dispatch(tb.name, tb.input, sub_results, knowledge)
                     sub_results.append(result)
                     tool_results.append({
                         "type": "tool_result",
@@ -426,6 +434,7 @@ class CreativeTeam:
             "strategic_planner": StrategicPlannerAgent(self.client),
         }
         self.cd = CDAgent(self.client)
+        self.knowledge = knowledge_base.load()
 
     def _build_context(self, results: list[AgentResult]) -> str:
         if not results:
@@ -443,14 +452,14 @@ class CreativeTeam:
 
         if tool_name == "brief_cd":
             print(f"  → ECD briefs Creative Director: {task[:80]}...")
-            result = self.cd.run(task, context)
+            result = self.cd.run(task, context, self.knowledge)
             print(f"    ✓ Creative Director delivered ({len(result.output)} chars)")
             return result
 
         key = tool_name.replace("brief_", "")
         agent = self.tier1[key]
         print(f"  → Briefing {agent.name}: {task[:80]}...")
-        result = agent.run(task, context)
+        result = agent.run(task, context, self.knowledge)
         print(f"    ✓ {agent.name} delivered ({len(result.output)} chars)")
         return result
 
