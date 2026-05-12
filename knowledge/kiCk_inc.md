@@ -2,12 +2,14 @@
 
 ## 基本情報
 - **会社名**: 株式会社kiCk（kiCk inc.）
-- **代表取締役**: 市川 辰徳
-- **取締役**: 藤川 大詩 / 長沼 宏介 / 杉内政士 / [社外] カゼプロ㈱ 代表取締役 戸練直木
+- **取締役会長**: 藤川 大詩
+- **代表取締役社長**: 市川 辰徳
+- **取締役**: 長井 宏介 / 杉内 政士
 - **所在地**: 〒150-0011 東京都渋谷区東3-9-19 Vort Ebisu Maxim6F
+- **電話**: 03-6434-7217
 - **設立**: 2013年6月
 - **資本金**: 5,000万円
-- **従業員数**: 42名
+- **従業員数**: 47名（2026年1月現在）
 
 ## PURPOSE
 > **GET YOUR KICKS!**
@@ -96,9 +98,14 @@ HR × Creative: 企業の人事戦略に、クリエイティブ発想をプラ�
 **サービス**: オリジナルブランド開発・運営 / オリジナルキャラクター開発・販売 / クリエイティブキュレーション / カルチャーコミュニティ運営 / オリジナルメディア運用
 
 ## 主要クライアント（延べ100社以上）
-HEBEL HAUS, Calbee, mandom, UNIQLO, PILOT, 日本工学院, Schick, TENTIAL, L'OCCITANE, SUNSTAR, JT, DANONE, りそな銀行, Panasonic, TOTO, adidas, Bacardi Japan, dip, Triumph, Nipponham, YAMAHA, 青山商事, IHG, 17LIVE, ZWILLING, Graphico, Zoff, 柏市 他多数
+HEBEL HAUS, Calbee, mandom, UNIQLO, PILOT, 日本工学院, Schick, TENTIAL, L'OCCITANE, SUNSTAR, JT, Panasonic, TOTO, adidas, Bacardi Japan, dip, Triumph, Nipponham, YAMAHA, 青山商事, IHG, 17LIVE, ZWILLING, Graphico, Zoff, 柏市, Reebok Japan, Vans Japan, Henkel Japan, 秋田書店, 有楽製菓 他多数
 
-**adidas案件**: ORIGINALS, Forum, Forum Low, GL3000, Progista, Copa, FREX, adidas golf, Made Originals など多数実績あり
+**カテゴリー別実績（抜粋）**
+- **スポーツ／ファッション**: adidas（ORIGINALS, Forum, GL3000, Progista, Copa, FREX, adidas golf, Made Originals, JO1・INIコラボ等多数）/ Reebok Japan（GL 3000, Instapump Fury）/ Vans Japan
+- **ビューティー／パーソナルケア**: Schick（FIRST TOKYO, HYDRO, SALON+, progista）/ Sunstar・Ora2 / mandom（Gatsby, ium, KNOWLEDGE）/ Henkel Japan（Schwarzkopf）
+- **住宅**: 旭化成ホームズ・HEBEL HAUS（ショールームプロモーション・カタログ・周年キャンペーン等50案件超）
+- **食品／飲料**: Calbee（Body Granola）/ 有楽製菓（Black Thunder）/ Bacardi Japan（Dewar's, Patron, Grey Goose）/ JT（Ploom, hi-lite）
+- **エンタメ／メディア**: 秋田書店（マンガプロモーション・TikTokコラボ）
 
 ## パートナーネットワーク
 - **Research & Planning**: QO, ユニーリサーチ, ビザスク
