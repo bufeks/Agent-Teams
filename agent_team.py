@@ -14,6 +14,9 @@ knowledge/ フォルダに PDF・PPT・TXT を置くと全エージェントの�
 """
 
 import os
+import urllib.parse
+import urllib.request
+import re
 from dataclasses import dataclass, field
 
 import knowledge_base
@@ -144,20 +147,145 @@ class ActivationPlannerAgent(SpecialistAgent):
 # Tier 2 specialists — report to CD
 # ---------------------------------------------------------------------------
 
+def _fetch_tcc_copy(keyword: str, max_results: int = 10) -> str:
+    """TCC コピラ（https://www.tcc.gr.jp/copira/）からキーワード検索して受賞コピー例を返す。"""
+    encoded = urllib.parse.quote(keyword)
+    url = f"https://www.tcc.gr.jp/copira/?copy={encoded}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+    except Exception as e:
+        return f"[TCC検索エラー: {e}]"
+
+    # 件数を抽出
+    count_match = re.search(r"([\d,]+)件が検索されました", html)
+    count_str = count_match.group(0) if count_match else "件数不明"
+
+    # <tr> ブロックからコピー・クライアント・コピーライター・媒体・年度を抽出
+    rows = re.findall(r"<tr>(.*?)</tr>", html, re.DOTALL)
+    entries = []
+    for row in rows:
+        # コピー本文（フルURL: https://www.tcc.gr.jp/copira/id/...）、改行を含む可能性あり
+        copy_match = re.search(r'href="https://www\.tcc\.gr\.jp/copira/id/[^"]+">(.+?)</a>', row, re.DOTALL)
+        if not copy_match:
+            continue
+        copy_text = re.sub(r"\s+", " ", copy_match.group(1)).strip()
+
+        # クライアント名
+        client_match = re.search(r'class="copira__client">([^<]+)</p>', row)
+        client = client_match.group(1).strip() if client_match else ""
+
+        # コピーライター名（複数の場合は最初の一人 + 他）
+        cw_names = re.findall(r'class="copira__copywriter"[^>]*>.*?<a[^>]*>([^<]+)</a>', row, re.DOTALL)
+        cw = "・".join(cw_names) if cw_names else ""
+
+        # 媒体
+        media_match = re.search(r'class="text-align-right">([^<]+)</td>', row)
+        media = media_match.group(1).strip() if media_match else ""
+
+        # 年度（<th>2024年</th>）
+        year_match = re.search(r"<th>(\d{4}年)</th>", row)
+        year = year_match.group(1) if year_match else ""
+
+        entries.append(f"「{copy_text}」 — {client}／{cw}（{year}・{media}）")
+        if len(entries) >= max_results:
+            break
+
+    results = "\n".join(entries) if entries else "（コピーテキスト取得できず）"
+    return f"【TCC コピラ検索結果】キーワード：「{keyword}」 / {count_str}\n{results}\n参照URL: {url}"
+
+
+_TCC_TOOL_DEF = {
+    "name": "search_tcc_copy",
+    "description": (
+        "東京コピーライターズクラブ（TCC）のコピー検索データベース「コピラ」を検索し、"
+        "受賞コピーや掲載コピーの実例を取得する。"
+        "キーワードは日本語で、商品カテゴリ・感情・テーマ・ブランド名などを指定できる。"
+        "1960年〜現在のTCC賞受賞作を含む6万件超のコピーが対象。"
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "keyword": {
+                "type": "string",
+                "description": "検索キーワード（日本語）。例：「ビール 夏」「母 贈り物」「自動車 未来」",
+            }
+        },
+        "required": ["keyword"],
+    },
+}
+
+
 class CopyWriterAgent(SpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
             name="CopyWriter",
             system_prompt=(
-                "You are a master CopyWriter at a world-class creative agency. "
-                "Your words move people. Craft headlines, taglines, manifestos, "
-                "scripts, and body copy that are surprising, truthful, and unforgettable. "
-                "You understand rhythm, silence, and the power of a single word. "
-                "Never use jargon or clichés. Every line earns its place. "
-                "Deliver multiple copy directions — rational, emotional, and unexpected."
+                "あなたは日本トップクラスのコピーライターです。"
+                "東京コピーライターズクラブ（TCC）賞を目指すレベルの言葉を書いてください。\n\n"
+                "【TCC受賞コピーの美学】\n"
+                "・一行で宇宙を開く：短く、鋭く、余白がある\n"
+                "・「当たり前」をひっくり返す視点：読んだ瞬間に世界が違って見える\n"
+                "・生活者の感情に名前をつける：言葉にならなかった感覚を言葉にする\n"
+                "・リズムと沈黙：句読点の位置、改行、字数感覚を磨く\n"
+                "・真実の匂い：作られた言葉ではなく、実際にあった感情から始める\n\n"
+                "【参考データベース】\n"
+                "search_tcc_copy ツールで TCC コピラ（https://www.tcc.gr.jp/copira/）を検索し、"
+                "テーマや感情に近いコピーの実例を参照してからアウトプットを組み立てること。"
+                "実例から「なぜこのコピーが機能するか」を分析し、そのエッセンスを応用する。\n\n"
+                "【アウトプット形式】\n"
+                "複数の方向性（理性・感情・意外性）でコピーを提案し、"
+                "各コピーについて「なぜこの言葉か」を一言で説明する。"
+                "ジャーゴンとクリシェは禁止。すべての一行が存在理由を持つこと。"
             ),
         )
+
+    def run(self, task: str, context: str = "", knowledge: str = "") -> AgentResult:
+        parts = []
+        if knowledge:
+            parts.append(knowledge)
+        if context:
+            parts.append(f"Team context:\n{context}")
+        parts.append(f"Your task:\n{task}")
+        user_content = "\n\n".join(parts)
+
+        messages: list[dict] = [{"role": "user", "content": user_content}]
+
+        try:
+            while True:
+                response = self.client.messages.create(
+                    model=MODEL,
+                    max_tokens=MAX_TOKENS,
+                    thinking={"type": "adaptive"},
+                    system=self.system_prompt,
+                    tools=[_TCC_TOOL_DEF],
+                    messages=messages,
+                )
+
+                # ツール呼び出しがない場合 → 最終アウトプット
+                if response.stop_reason != "tool_use":
+                    output = next((b.text for b in response.content if b.type == "text"), "")
+                    return AgentResult(agent_name=self.name, task=task, output=output, success=True)
+
+                # ツール実行ループ
+                messages.append({"role": "assistant", "content": response.content})
+                tool_results = []
+                for block in response.content:
+                    if block.type == "tool_use":
+                        kw = block.input.get("keyword", "")
+                        print(f"      [TCC検索] キーワード：「{kw}」")
+                        result_text = _fetch_tcc_copy(kw)
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result_text,
+                        })
+                messages.append({"role": "user", "content": tool_results})
+
+        except Exception as e:
+            return AgentResult(agent_name=self.name, task=task, output=f"Error: {e}", success=False)
 
 
 class ArtDirectorAgent(SpecialistAgent):
