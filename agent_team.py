@@ -1,9 +1,19 @@
 """
 Creative Agency Team Framework
 
-An ECD-led multi-agent creative team built on the Anthropic API.
-The ECD (Executive Creative Director) orchestrates a team of specialists:
-CD, Strategic Planner, CopyWriter, Planner, Researcher, and Art Director.
+Hierarchy:
+  ECD (orchestrator)
+  ├── Researcher
+  ├── Strategic Planner
+  ├── Planner
+  └── CD (sub-orchestrator)
+      ├── CopyWriter
+      └── Art Director
+
+The ECD delegates upstream thinking to Researcher / Strategic Planner / Planner,
+then hands the creative challenge to the CD. The CD runs its own internal loop,
+briefing CopyWriter and Art Director before delivering the finished creative work
+back to the ECD.
 """
 
 import os
@@ -31,18 +41,17 @@ class TeamResult:
     final_answer: str = ""
 
     def summary(self) -> str:
-        lines = [f"=== Creative Brief Result: {self.original_task} ===\n"]
+        lines = [f"=== Creative Output: {self.original_task} ===\n"]
         for r in self.agent_results:
             status = "✓" if r.success else "✗"
             lines.append(f"[{status}] {r.agent_name}")
-            lines.append(f"    Task: {r.task[:100]}{'...' if len(r.task) > 100 else ''}")
             lines.append(f"    {r.output[:300]}{'...' if len(r.output) > 300 else ''}\n")
         lines.append(f"--- ECD Final Direction ---\n{self.final_answer}")
         return "\n".join(lines)
 
 
 class SpecialistAgent:
-    """Base class for creative agency specialist agents."""
+    """Base class for specialist agents."""
 
     def __init__(self, client: anthropic.Anthropic, name: str, system_prompt: str):
         self.client = client
@@ -52,7 +61,7 @@ class SpecialistAgent:
     def run(self, task: str, context: str = "") -> AgentResult:
         user_content = task
         if context:
-            user_content = f"Team context from previous collaborators:\n{context}\n\nYour task:\n{task}"
+            user_content = f"Team context:\n{context}\n\nYour task:\n{task}"
 
         try:
             response = self.client.messages.create(
@@ -62,86 +71,51 @@ class SpecialistAgent:
                 system=self.system_prompt,
                 messages=[{"role": "user", "content": user_content}],
             )
-            output = next(
-                (b.text for b in response.content if b.type == "text"), ""
-            )
-            return AgentResult(
-                agent_name=self.name,
-                task=task,
-                output=output,
-                success=True,
-            )
+            output = next((b.text for b in response.content if b.type == "text"), "")
+            return AgentResult(agent_name=self.name, task=task, output=output, success=True)
         except Exception as e:
-            return AgentResult(
-                agent_name=self.name,
-                task=task,
-                output=f"Error: {e}",
-                success=False,
-            )
+            return AgentResult(agent_name=self.name, task=task, output=f"Error: {e}", success=False)
 
 
-class CDAgent(SpecialistAgent):
-    """Creative Director — shapes the big idea and elevates creative executions."""
+# ---------------------------------------------------------------------------
+# Tier 1 specialists — report directly to ECD
+# ---------------------------------------------------------------------------
 
+class ResearcherAgent(SpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
-            name="Creative Director",
+            name="Researcher",
             system_prompt=(
-                "You are a Creative Director (CD) at a world-class creative agency. "
-                "Your role is to shape the overarching creative vision and ensure every idea "
-                "is bold, original, and emotionally resonant. You translate strategy into "
-                "powerful creative concepts, inspire the creative team, and push executions "
-                "toward award-winning quality. You think in big ideas and speak in concepts. "
-                "You challenge the obvious. You protect the work from mediocrity. "
-                "Present your creative concepts clearly: the core idea, the insight it's "
-                "built on, and how it can live across channels."
+                "You are a Consumer & Cultural Researcher at a world-class creative agency. "
+                "Uncover the deep human insights, cultural tensions, behavioral patterns, "
+                "and competitive landscapes that fuel great creative work. "
+                "Go beyond data — find the why behind the what. "
+                "Spot trends before they become mainstream. "
+                "Structure your findings: cultural context, consumer insight, "
+                "competitive white space, and the one unexpected truth no one is talking about."
             ),
         )
 
 
 class StrategicPlannerAgent(SpecialistAgent):
-    """Strategic Planner — defines brand positioning and long-term communication platform."""
-
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
             name="Strategic Planner",
             system_prompt=(
                 "You are a Strategic Planner at a world-class creative agency. "
-                "Your role is to define the brand's positioning, communication strategy, "
-                "and long-term creative platform. You identify the single most compelling "
-                "tension or human truth that can power a campaign for years. "
-                "You connect business ambitions to cultural moments and human desires. "
-                "You write strategies that are so sharp and inspiring they practically "
-                "write the brief themselves. Deliver your output with: brand truth, "
-                "cultural tension, strategic territory, and a provocative thought-starter."
-            ),
-        )
-
-
-class CopyWriterAgent(SpecialistAgent):
-    """CopyWriter — crafts language that moves people."""
-
-    def __init__(self, client: anthropic.Anthropic):
-        super().__init__(
-            client=client,
-            name="CopyWriter",
-            system_prompt=(
-                "You are a master CopyWriter at a world-class creative agency. "
-                "Your words move people. You craft headlines, taglines, manifestos, "
-                "scripts, and body copy that are surprising, truthful, and unforgettable. "
-                "You understand rhythm, silence, and the seismic power of a single word. "
-                "You write for humans, not brands. You never use jargon or clichés. "
-                "Every line earns its place. Deliver multiple copy directions — "
-                "show the rational option, the emotional option, and the unexpected option."
+                "Define the brand's positioning, communication strategy, and long-term "
+                "creative platform. Identify the single most compelling human truth that "
+                "can power a campaign for years. Connect business ambitions to cultural "
+                "moments and human desires. "
+                "Deliver: brand truth, cultural tension, strategic territory, "
+                "and a provocative thought-starter for the creative team."
             ),
         )
 
 
 class PlannerAgent(SpecialistAgent):
-    """Account Planner — voice of the consumer, writer of the creative brief."""
-
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
@@ -149,70 +123,212 @@ class PlannerAgent(SpecialistAgent):
             system_prompt=(
                 "You are an Account Planner at a world-class creative agency. "
                 "You are the voice of the consumer inside the creative process. "
-                "You synthesize research and strategy into tight, inspiring creative briefs "
-                "that unlock great ideas. You define the target audience with surgical "
-                "precision — not demographics, but psychographics and lived tensions. "
-                "You identify the single thing the communication must make people feel, "
-                "think, or do. Your brief is the creative team's north star. "
+                "Write tight, inspiring creative briefs that unlock great ideas. "
+                "Define the target with surgical precision — psychographics, not demographics. "
                 "Structure your output as a proper creative brief: "
-                "Why are we advertising? Who are we talking to? What do we want them to feel? "
-                "What's the single most important thing to say? Why should they believe it?"
+                "Why are we advertising? Who are we talking to? "
+                "What do we want them to feel? "
+                "What's the single most important thing to say? "
+                "Why should they believe it?"
             ),
         )
 
 
-class ResearcherAgent(SpecialistAgent):
-    """Researcher — uncovers human insights, cultural trends, and competitive landscape."""
+# ---------------------------------------------------------------------------
+# Tier 2 specialists — report to CD
+# ---------------------------------------------------------------------------
 
+class CopyWriterAgent(SpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
-            name="Researcher",
+            name="CopyWriter",
             system_prompt=(
-                "You are a Consumer & Cultural Researcher at a world-class creative agency. "
-                "Your role is to uncover the deep human insights, cultural tensions, "
-                "behavioral patterns, and competitive landscapes that fuel great creative work. "
-                "You go beyond data — you find the why behind the what. "
-                "You spot trends before they become mainstream. "
-                "You provide the team with the evidence and inspiration needed to make "
-                "brave, informed creative decisions. "
-                "Structure your findings: cultural context, consumer insight, "
-                "competitive white space, and the one unexpected truth no one is talking about."
+                "You are a master CopyWriter at a world-class creative agency. "
+                "Your words move people. Craft headlines, taglines, manifestos, "
+                "scripts, and body copy that are surprising, truthful, and unforgettable. "
+                "You understand rhythm, silence, and the power of a single word. "
+                "Never use jargon or clichés. Every line earns its place. "
+                "Deliver multiple copy directions — rational, emotional, and unexpected."
             ),
         )
 
 
 class ArtDirectorAgent(SpecialistAgent):
-    """Art Director — defines the visual language and aesthetic of the campaign."""
-
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
             name="Art Director",
             system_prompt=(
                 "You are an Art Director at a world-class creative agency. "
-                "Your role is to define the visual language of a campaign — "
-                "typography, color palette, composition, photography style, "
-                "motion aesthetic, and the overall visual world of the brand. "
-                "You think in images, feelings, and sensations. "
-                "You can describe a visual concept so vividly that people see it "
-                "before it's made. You ensure every visual element amplifies the idea "
-                "and deepens the emotional connection. "
-                "Deliver your output as a visual direction: mood, references, "
-                "color story, typographic personality, imagery style, and a "
-                "scene-by-scene description of the hero execution."
+                "Define the visual language of a campaign — typography, color palette, "
+                "composition, photography style, motion aesthetic, and overall visual world. "
+                "Think in images, feelings, and sensations. Describe a visual concept so "
+                "vividly that people can see it before it's made. "
+                "Deliver: mood, references, color story, typographic personality, "
+                "imagery style, and a scene-by-scene description of the hero execution."
             ),
         )
 
 
-class CreativeTeam:
+# ---------------------------------------------------------------------------
+# CD — sub-orchestrator between ECD and the creative execution team
+# ---------------------------------------------------------------------------
+
+class CDAgent:
     """
-    ECD-led creative agency team.
-    The ECD orchestrates specialist agents via tool calls,
-    each contributing their domain expertise to the creative challenge.
+    Creative Director — sub-orchestrator.
+    Receives the strategic brief from the ECD, then independently
+    briefs CopyWriter and Art Director to build the creative execution.
+    Returns a consolidated creative package back to the ECD.
     """
 
-    TOOLS: list[dict[str, Any]] = [
+    CD_SYSTEM = (
+        "You are a Creative Director (CD) at a world-class creative agency. "
+        "You sit between the ECD's strategic direction and the execution team. "
+        "Your role: transform strategy and briefs into a powerful creative concept, "
+        "then brief your CopyWriter and Art Director to execute it. "
+        "You push for ideas that are bold, original, and emotionally resonant. "
+        "You challenge the obvious. You protect the work from mediocrity.\n\n"
+        "You have two specialists:\n"
+        "- CopyWriter: language, headlines, taglines, manifestos, scripts\n"
+        "- Art Director: visual language, mood, color, typography, imagery\n\n"
+        "First, define the creative concept clearly. Then brief both specialists. "
+        "Finally, synthesize their outputs into a cohesive creative package to "
+        "present back to the ECD."
+    )
+
+    CD_TOOLS: list[dict[str, Any]] = [
+        {
+            "name": "brief_copywriter",
+            "description": (
+                "Brief the CopyWriter to craft the language of the campaign — "
+                "headlines, taglines, manifesto, scripts, or any copy needed."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "The copy task."},
+                    "include_context": {"type": "boolean", "default": True},
+                },
+                "required": ["task"],
+            },
+        },
+        {
+            "name": "brief_art_director",
+            "description": (
+                "Brief the Art Director to define the visual language — "
+                "mood, aesthetic, color, typography, imagery style, and the visual world."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "The visual direction task."},
+                    "include_context": {"type": "boolean", "default": True},
+                },
+                "required": ["task"],
+            },
+        },
+    ]
+
+    def __init__(self, client: anthropic.Anthropic):
+        self.client = client
+        self.name = "Creative Director"
+        self.specialists: dict[str, SpecialistAgent] = {
+            "copywriter": CopyWriterAgent(client),
+            "art_director": ArtDirectorAgent(client),
+        }
+
+    def _build_context(self, results: list[AgentResult]) -> str:
+        if not results:
+            return ""
+        return "\n\n---\n\n".join(f"### {r.agent_name}:\n{r.output}" for r in results)
+
+    def _dispatch(
+        self,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        accumulated: list[AgentResult],
+    ) -> AgentResult:
+        key = "copywriter" if tool_name == "brief_copywriter" else "art_director"
+        agent = self.specialists[key]
+        context = self._build_context(accumulated) if tool_input.get("include_context", True) else ""
+        print(f"    → CD briefs {agent.name}: {tool_input['task'][:70]}...")
+        result = agent.run(tool_input["task"], context)
+        print(f"      ✓ {agent.name} delivered ({len(result.output)} chars)")
+        return result
+
+    def run(self, task: str, context: str = "") -> AgentResult:
+        """Run the CD sub-orchestrator loop and return a consolidated AgentResult."""
+        user_content = task
+        if context:
+            user_content = f"Strategic context from upstream:\n{context}\n\nYour creative challenge:\n{task}"
+
+        messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
+        sub_results: list[AgentResult] = []
+
+        try:
+            while True:
+                response = self.client.messages.create(
+                    model=MODEL,
+                    max_tokens=MAX_TOKENS,
+                    thinking={"type": "adaptive"},
+                    system=self.CD_SYSTEM,
+                    tools=self.CD_TOOLS,
+                    messages=messages,
+                )
+
+                tool_blocks = [b for b in response.content if b.type == "tool_use"]
+                text_blocks = [b for b in response.content if b.type == "text"]
+                messages.append({"role": "assistant", "content": response.content})
+
+                if response.stop_reason == "end_turn":
+                    final = next((b.text for b in text_blocks), "")
+                    # Prepend sub-agent outputs for full transparency
+                    if sub_results:
+                        sub_summary = "\n\n".join(
+                            f"**{r.agent_name}**\n{r.output}" for r in sub_results
+                        )
+                        final = f"{sub_summary}\n\n---\n\n**CD Creative Package:**\n{final}"
+                    return AgentResult(
+                        agent_name=self.name, task=task, output=final, success=True
+                    )
+
+                if response.stop_reason != "tool_use":
+                    output = next((b.text for b in text_blocks), "No creative output.")
+                    return AgentResult(
+                        agent_name=self.name, task=task, output=output, success=True
+                    )
+
+                tool_results = []
+                for tb in tool_blocks:
+                    result = self._dispatch(tb.name, tb.input, sub_results)
+                    sub_results.append(result)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tb.id,
+                        "content": result.output if result.success else f"Error: {result.output}",
+                    })
+                messages.append({"role": "user", "content": tool_results})
+
+        except Exception as e:
+            return AgentResult(agent_name=self.name, task=task, output=f"Error: {e}", success=False)
+
+
+# ---------------------------------------------------------------------------
+# ECD — top-level orchestrator
+# ---------------------------------------------------------------------------
+
+class CreativeTeam:
+    """
+    ECD-led creative team orchestrator.
+
+    Hierarchy:
+      ECD → Researcher, Strategic Planner, Planner, CD
+      CD  → CopyWriter, Art Director
+    """
+
+    ECD_TOOLS: list[dict[str, Any]] = [
         {
             "name": "brief_researcher",
             "description": (
@@ -223,15 +339,8 @@ class CreativeTeam:
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": "The specific research task or question to investigate.",
-                    },
-                    "include_context": {
-                        "type": "boolean",
-                        "description": "Whether to share previous team outputs as context.",
-                        "default": True,
-                    },
+                    "task": {"type": "string", "description": "Research task or question."},
+                    "include_context": {"type": "boolean", "default": True},
                 },
                 "required": ["task"],
             },
@@ -240,21 +349,13 @@ class CreativeTeam:
             "name": "brief_strategic_planner",
             "description": (
                 "Brief the Strategic Planner to define brand positioning, "
-                "communication strategy, and the creative platform. "
-                "Use this to establish the strategic foundation before ideation."
+                "communication strategy, and the creative platform."
             ),
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": "The strategic challenge or question to address.",
-                    },
-                    "include_context": {
-                        "type": "boolean",
-                        "description": "Whether to share previous team outputs as context.",
-                        "default": True,
-                    },
+                    "task": {"type": "string", "description": "Strategic challenge to address."},
+                    "include_context": {"type": "boolean", "default": True},
                 },
                 "required": ["task"],
             },
@@ -263,21 +364,14 @@ class CreativeTeam:
             "name": "brief_planner",
             "description": (
                 "Brief the Planner to write the creative brief — "
-                "distilling research and strategy into the single inspiring brief "
-                "that will guide all creative work. Use this before the creative team begins."
+                "distilling research and strategy into the single inspiring document "
+                "that guides all creative work."
             ),
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": "The briefing task — what brief needs to be written.",
-                    },
-                    "include_context": {
-                        "type": "boolean",
-                        "description": "Whether to share previous team outputs as context.",
-                        "default": True,
-                    },
+                    "task": {"type": "string", "description": "Briefing task."},
+                    "include_context": {"type": "boolean", "default": True},
                 },
                 "required": ["task"],
             },
@@ -285,68 +379,16 @@ class CreativeTeam:
         {
             "name": "brief_cd",
             "description": (
-                "Brief the Creative Director to develop the big creative idea — "
-                "the concept that will sit at the heart of the campaign. "
-                "Use this once strategy and the brief are set."
+                "Brief the Creative Director with the strategic brief and challenge. "
+                "The CD will independently manage CopyWriter and Art Director "
+                "to deliver the full creative execution. "
+                "Use this after research, strategy, and the brief are in place."
             ),
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": "The creative challenge — what idea needs to be developed.",
-                    },
-                    "include_context": {
-                        "type": "boolean",
-                        "description": "Whether to share previous team outputs as context.",
-                        "default": True,
-                    },
-                },
-                "required": ["task"],
-            },
-        },
-        {
-            "name": "brief_copywriter",
-            "description": (
-                "Brief the CopyWriter to craft the language of the campaign — "
-                "headlines, taglines, manifesto, scripts, or any copy needed. "
-                "Use this after the creative concept is established."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": "The copy task — what needs to be written and in what format.",
-                    },
-                    "include_context": {
-                        "type": "boolean",
-                        "description": "Whether to share previous team outputs as context.",
-                        "default": True,
-                    },
-                },
-                "required": ["task"],
-            },
-        },
-        {
-            "name": "brief_art_director",
-            "description": (
-                "Brief the Art Director to define the visual language of the campaign — "
-                "mood, aesthetic, color, typography, imagery style, and the visual world. "
-                "Use this alongside or after the CopyWriter to complete the creative."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": "The visual direction task — what visual world needs to be defined.",
-                    },
-                    "include_context": {
-                        "type": "boolean",
-                        "description": "Whether to share previous team outputs as context.",
-                        "default": True,
-                    },
+                    "task": {"type": "string", "description": "Creative challenge for the CD."},
+                    "include_context": {"type": "boolean", "default": True},
                 },
                 "required": ["task"],
             },
@@ -355,73 +397,58 @@ class CreativeTeam:
 
     ECD_SYSTEM = (
         "You are an Executive Creative Director (ECD) at a world-class creative agency. "
-        "You lead a team of exceptional specialists: a Researcher, Strategic Planner, "
-        "Planner, Creative Director, CopyWriter, and Art Director. "
-        "Your role is to orchestrate the team toward brilliant, culturally resonant creative work.\n\n"
-        "How you work:\n"
-        "1. You always start with research and strategy before jumping to ideas\n"
-        "2. You brief each specialist clearly, in the right sequence\n"
-        "3. You push the team to go beyond the obvious — the first idea is never the best idea\n"
-        "4. You synthesize the team's outputs into a cohesive creative direction\n"
-        "5. Your final output sets the standard: ambitious, specific, and ready to execute\n\n"
-        "Typical flow: Researcher → Strategic Planner → Planner (brief) → CD (concept) → "
-        "CopyWriter + Art Director (execution). Adapt this flow to the task at hand.\n\n"
-        "After all specialists have contributed, deliver your ECD final direction: "
-        "the definitive creative output that synthesizes everything the team has built."
+        "You lead the team and set the creative vision.\n\n"
+        "Your direct reports:\n"
+        "- Researcher: consumer insight, cultural trends, competitive landscape\n"
+        "- Strategic Planner: brand strategy, positioning, communication platform\n"
+        "- Planner: creative brief, consumer voice, audience definition\n"
+        "- Creative Director (CD): leads the creative execution team (CopyWriter + Art Director)\n\n"
+        "The CD manages CopyWriter and Art Director independently — "
+        "you brief the CD, and the CD delivers the full creative package.\n\n"
+        "Workflow: Researcher → Strategic Planner → Planner → CD → your final synthesis.\n\n"
+        "After the CD delivers, synthesize everything into your ECD final direction: "
+        "the definitive creative output that sets the standard for the campaign."
     )
 
     def __init__(self, api_key: str | None = None):
         self.client = anthropic.Anthropic(
             api_key=api_key or os.environ.get("ANTHROPIC_API_KEY")
         )
-        self.specialists: dict[str, SpecialistAgent] = {
+        self.tier1: dict[str, SpecialistAgent] = {
             "researcher": ResearcherAgent(self.client),
             "strategic_planner": StrategicPlannerAgent(self.client),
             "planner": PlannerAgent(self.client),
-            "cd": CDAgent(self.client),
-            "copywriter": CopyWriterAgent(self.client),
-            "art_director": ArtDirectorAgent(self.client),
         }
+        self.cd = CDAgent(self.client)
 
     def _build_context(self, results: list[AgentResult]) -> str:
         if not results:
             return ""
-        parts = []
-        for r in results:
-            parts.append(f"### {r.agent_name}:\n{r.output}")
-        return "\n\n---\n\n".join(parts)
+        return "\n\n---\n\n".join(f"### {r.agent_name}:\n{r.output}" for r in results)
 
     def _dispatch_tool(
         self,
         tool_name: str,
         tool_input: dict[str, Any],
-        accumulated_results: list[AgentResult],
+        accumulated: list[AgentResult],
     ) -> AgentResult:
-        # Map tool name to specialist key
-        tool_to_key = {
-            "brief_researcher": "researcher",
-            "brief_strategic_planner": "strategic_planner",
-            "brief_planner": "planner",
-            "brief_cd": "cd",
-            "brief_copywriter": "copywriter",
-            "brief_art_director": "art_director",
-        }
-        agent_key = tool_to_key[tool_name]
-        agent = self.specialists[agent_key]
+        context = self._build_context(accumulated) if tool_input.get("include_context", True) else ""
+        task = tool_input["task"]
 
-        context = ""
-        if tool_input.get("include_context", True) and accumulated_results:
-            context = self._build_context(accumulated_results)
+        if tool_name == "brief_cd":
+            print(f"  → ECD briefs Creative Director: {task[:80]}...")
+            result = self.cd.run(task, context)
+            print(f"    ✓ Creative Director delivered ({len(result.output)} chars)")
+            return result
 
-        print(f"  → Briefing {agent.name}: {tool_input['task'][:80]}...")
-        result = agent.run(tool_input["task"], context)
+        key = tool_name.replace("brief_", "")
+        agent = self.tier1[key]
+        print(f"  → Briefing {agent.name}: {task[:80]}...")
+        result = agent.run(task, context)
         print(f"    ✓ {agent.name} delivered ({len(result.output)} chars)")
         return result
 
     def run(self, brief: str, verbose: bool = True) -> TeamResult:
-        """
-        Run the creative team on a brief, with the ECD orchestrating the specialists.
-        """
         if verbose:
             print(f"\n{'='*60}")
             print(f"ECD Brief: {brief}")
@@ -436,19 +463,16 @@ class CreativeTeam:
                 max_tokens=MAX_TOKENS,
                 thinking={"type": "adaptive"},
                 system=self.ECD_SYSTEM,
-                tools=self.TOOLS,
+                tools=self.ECD_TOOLS,
                 messages=messages,
             )
 
-            tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
+            tool_blocks = [b for b in response.content if b.type == "tool_use"]
             text_blocks = [b for b in response.content if b.type == "text"]
-
             messages.append({"role": "assistant", "content": response.content})
 
             if response.stop_reason == "end_turn":
-                team_result.final_answer = next(
-                    (b.text for b in text_blocks), ""
-                )
+                team_result.final_answer = next((b.text for b in text_blocks), "")
                 break
 
             if response.stop_reason != "tool_use":
@@ -458,18 +482,13 @@ class CreativeTeam:
                 break
 
             tool_results = []
-            for tool_block in tool_use_blocks:
-                agent_result = self._dispatch_tool(
-                    tool_block.name,
-                    tool_block.input,
-                    team_result.agent_results,
-                )
-                team_result.agent_results.append(agent_result)
+            for tb in tool_blocks:
+                result = self._dispatch_tool(tb.name, tb.input, team_result.agent_results)
+                team_result.agent_results.append(result)
                 tool_results.append({
                     "type": "tool_result",
-                    "tool_use_id": tool_block.id,
-                    "content": agent_result.output if agent_result.success
-                               else f"Error: {agent_result.output}",
+                    "tool_use_id": tb.id,
+                    "content": result.output if result.success else f"Error: {result.output}",
                 })
 
             messages.append({"role": "user", "content": tool_results})
