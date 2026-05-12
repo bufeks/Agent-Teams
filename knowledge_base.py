@@ -61,7 +61,7 @@ def load() -> str:
         return ""
 
     files = sorted(
-        f for f in KNOWLEDGE_DIR.iterdir()
+        f for f in KNOWLEDGE_DIR.rglob("*")
         if f.is_file() and f.suffix.lower() in SUPPORTED
     )
 
@@ -79,7 +79,8 @@ def load() -> str:
             content = _read_text(f)
 
         if content.strip():
-            sections.append(f"### {f.name}\n{content}")
+            label = f.relative_to(KNOWLEDGE_DIR)
+            sections.append(f"### {label}\n{content}")
 
     if not sections:
         return ""
@@ -99,11 +100,13 @@ def summary() -> str:
         return "knowledge/ フォルダが存在しません。"
 
     files = sorted(
-        f for f in KNOWLEDGE_DIR.iterdir()
+        f for f in KNOWLEDGE_DIR.rglob("*")
         if f.is_file() and f.suffix.lower() in SUPPORTED
     )
 
     if not files:
         return "knowledge/ フォルダにファイルがありません。"
 
-    return "読み込み済みファイル:\n" + "\n".join(f"  - {f.name}" for f in files)
+    return "読み込み済みファイル:\n" + "\n".join(
+        f"  - {f.relative_to(KNOWLEDGE_DIR)}" for f in files
+    )
