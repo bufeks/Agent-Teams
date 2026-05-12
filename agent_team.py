@@ -115,21 +115,24 @@ class StrategicPlannerAgent(SpecialistAgent):
         )
 
 
-class PlannerAgent(SpecialistAgent):
+class ActivationPlannerAgent(SpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
-            name="Planner",
+            name="Activation Planner",
             system_prompt=(
-                "You are an Account Planner at a world-class creative agency. "
-                "You are the voice of the consumer inside the creative process. "
-                "Write tight, inspiring creative briefs that unlock great ideas. "
-                "Define the target with surgical precision — psychographics, not demographics. "
-                "Structure your output as a proper creative brief: "
-                "Why are we advertising? Who are we talking to? "
-                "What do we want them to feel? "
-                "What's the single most important thing to say? "
-                "Why should they believe it?"
+                "You are an Activation Planner at a world-class creative agency. "
+                "Your role is to translate the creative concept into a concrete, "
+                "channel-by-channel activation plan that reaches people at the right moment. "
+                "You design the consumer journey — from awareness to action — across "
+                "paid, owned, earned, and experiential touchpoints. "
+                "You think in moments, not media: where is the audience? what are they doing? "
+                "what does the brand interruption feel like in that context? "
+                "You plan events, stunts, social amplification, influencer strategy, "
+                "retail activation, and OOH with the same creative rigor as the big idea. "
+                "Structure your output: consumer journey map, channel strategy by phase "
+                "(launch / sustain / amplify), key activation moments, KPIs per channel, "
+                "and the one unexpected activation that could earn media on its own."
             ),
         )
 
@@ -186,19 +189,36 @@ class CDAgent:
     CD_SYSTEM = (
         "You are a Creative Director (CD) at a world-class creative agency. "
         "You sit between the ECD's strategic direction and the execution team. "
-        "Your role: transform strategy and briefs into a powerful creative concept, "
-        "then brief your CopyWriter and Art Director to execute it. "
+        "Your role: transform strategy into a powerful creative concept, "
+        "then orchestrate your team to execute it across copy, visuals, and activation. "
         "You push for ideas that are bold, original, and emotionally resonant. "
         "You challenge the obvious. You protect the work from mediocrity.\n\n"
-        "You have two specialists:\n"
+        "Your team:\n"
+        "- Activation Planner: consumer journey, channel strategy, touchpoints, events, stunts\n"
         "- CopyWriter: language, headlines, taglines, manifestos, scripts\n"
         "- Art Director: visual language, mood, color, typography, imagery\n\n"
-        "First, define the creative concept clearly. Then brief both specialists. "
-        "Finally, synthesize their outputs into a cohesive creative package to "
-        "present back to the ECD."
+        "Workflow: define the creative concept first, then brief all three specialists. "
+        "Synthesize their outputs into a cohesive creative + activation package "
+        "to present back to the ECD."
     )
 
     CD_TOOLS: list[dict[str, Any]] = [
+        {
+            "name": "brief_activation_planner",
+            "description": (
+                "Brief the Activation Planner to design the channel-by-channel activation plan — "
+                "consumer journey, touchpoints, events, social, OOH, and experiential moments. "
+                "Use this once the creative concept is set to map how it comes to life."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "The activation planning task."},
+                    "include_context": {"type": "boolean", "default": True},
+                },
+                "required": ["task"],
+            },
+        },
         {
             "name": "brief_copywriter",
             "description": (
@@ -235,6 +255,7 @@ class CDAgent:
         self.client = client
         self.name = "Creative Director"
         self.specialists: dict[str, SpecialistAgent] = {
+            "activation_planner": ActivationPlannerAgent(client),
             "copywriter": CopyWriterAgent(client),
             "art_director": ArtDirectorAgent(client),
         }
@@ -250,7 +271,8 @@ class CDAgent:
         tool_input: dict[str, Any],
         accumulated: list[AgentResult],
     ) -> AgentResult:
-        key = "copywriter" if tool_name == "brief_copywriter" else "art_director"
+        key = tool_name.replace("brief_", "")
+        key = key  # activation_planner / copywriter / art_director
         agent = self.specialists[key]
         context = self._build_context(accumulated) if tool_input.get("include_context", True) else ""
         print(f"    → CD briefs {agent.name}: {tool_input['task'][:70]}...")
@@ -361,22 +383,6 @@ class CreativeTeam:
             },
         },
         {
-            "name": "brief_planner",
-            "description": (
-                "Brief the Planner to write the creative brief — "
-                "distilling research and strategy into the single inspiring document "
-                "that guides all creative work."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "task": {"type": "string", "description": "Briefing task."},
-                    "include_context": {"type": "boolean", "default": True},
-                },
-                "required": ["task"],
-            },
-        },
-        {
             "name": "brief_cd",
             "description": (
                 "Brief the Creative Director with the strategic brief and challenge. "
@@ -401,11 +407,12 @@ class CreativeTeam:
         "Your direct reports:\n"
         "- Researcher: consumer insight, cultural trends, competitive landscape\n"
         "- Strategic Planner: brand strategy, positioning, communication platform\n"
-        "- Planner: creative brief, consumer voice, audience definition\n"
-        "- Creative Director (CD): leads the creative execution team (CopyWriter + Art Director)\n\n"
-        "The CD manages CopyWriter and Art Director independently — "
-        "you brief the CD, and the CD delivers the full creative package.\n\n"
-        "Workflow: Researcher → Strategic Planner → Planner → CD → your final synthesis.\n\n"
+        "- Creative Director (CD): leads the creative execution team "
+        "(Activation Planner, CopyWriter, Art Director)\n\n"
+        "The CD manages the execution team independently — "
+        "you brief the CD with strategy and challenge, "
+        "and the CD delivers the full creative and activation package.\n\n"
+        "Workflow: Researcher → Strategic Planner → CD → your final synthesis.\n\n"
         "After the CD delivers, synthesize everything into your ECD final direction: "
         "the definitive creative output that sets the standard for the campaign."
     )
@@ -417,7 +424,6 @@ class CreativeTeam:
         self.tier1: dict[str, SpecialistAgent] = {
             "researcher": ResearcherAgent(self.client),
             "strategic_planner": StrategicPlannerAgent(self.client),
-            "planner": PlannerAgent(self.client),
         }
         self.cd = CDAgent(self.client)
 
