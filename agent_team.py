@@ -88,6 +88,34 @@ class SpecialistAgent:
 # Tier 1 specialists — report directly to ECD
 # ---------------------------------------------------------------------------
 
+class CrossIndustryAnalystAgent(SpecialistAgent):
+    def __init__(self, client: anthropic.Anthropic):
+        super().__init__(
+            client=client,
+            name="Cross-Industry Analyst",
+            system_prompt=(
+                "あなたの仕事は、全く異なる業界・ジャンルの成功事例を持ち込み、"
+                "今のブリーフに『構造ごと移植できるもの』を見つけることだ。\n\n"
+                "【原則】\n"
+                "同じカテゴリーは見ない。ファッション案件なら食品・金融・スポーツ・宗教・軍事・"
+                "ゲーム・医療・農業の中から参照する。遠ければ遠いほど良い。\n"
+                "表面（ビジュアル・コピー）ではなく『構造的メカニズム』を抽出する。"
+                "『なぜ機能したか』の本質を取り出し、別の文脈で再起動させる。\n\n"
+                "【参照する成功事例の条件】\n"
+                "・当初は常識外れと思われたが、結果的に市場・認識・行動を変えたもの\n"
+                "・模倣でなく、構造的に学べるもの\n"
+                "・3〜5業界、それぞれ1事例\n\n"
+                "【アウトプット形式（各事例）】\n"
+                "▶ 業界：[ジャンル名]\n"
+                "  事例：[具体的なプロダクト・キャンペーン・取り組み名]\n"
+                "  何をやったか：（一行）\n"
+                "  なぜ機能したか：（構造的メカニズムを一段深く）\n"
+                "  このブリーフへの移植アイデア：（具体的に）\n\n"
+                "最後に「最も可能性のある移植先」を1つ選び、その理由を述べる。"
+            ),
+        )
+
+
 class BriefReframerAgent(SpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
@@ -398,6 +426,7 @@ class CDAgent:
         "You challenge the obvious. You protect the work from mediocrity.\n\n"
         "Your team:\n"
         "- Challenger: attacks your first concept for being safe or predictable — call this FIRST\n"
+        "- Cross-Industry Analyst: finds structural mechanisms from unrelated industries to transplant\n"
         "- Activation Planner: consumer journey, channel strategy, touchpoints, events, stunts\n"
         "- CopyWriter: language, headlines, taglines, manifestos, scripts\n"
         "- Art Director: visual language, mood, color, typography, imagery\n\n"
@@ -406,12 +435,31 @@ class CDAgent:
         "それを「禁じ手リスト」として明示する。コンセプトはそのどれにも触れてはならない。\n"
         "Step 1 — 最初のコンセプトドラフトを作る。\n"
         "Step 2 — 必ず challenge_creative を呼び、Challenger にコンセプトを攻撃させる。\n"
-        "Step 3 — Challengerの指摘を受け、コンセプトを再構築する。最初のドラフトに戻ってはならない。\n"
+        "Step 3 — Challengerの指摘を受けてコンセプトを再構築する。行き詰まったら "
+        "find_cross_industry_analogies を呼び、異業種の成功構造から突破口を探す。\n"
         "Step 4 — 再構築したコンセプトでCopyWriter・Art Director・Activation Plannerをブリーフする。\n"
         "Step 5 — 全員のアウトプットを統合してECDに提出する。"
     )
 
     CD_TOOLS: list[dict[str, Any]] = [
+        {
+            "name": "find_cross_industry_analogies",
+            "description": (
+                "Cross-Industry Analystに依頼し、全く異なる業界の成功事例から"
+                "構造的に移植できるメカニズムを探させる。"
+                "Challengerにコンセプトを壊された後、再構築の足がかりとして使う。"
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "challenge": {
+                        "type": "string",
+                        "description": "再構築したいクリエイティブ課題の要約。",
+                    }
+                },
+                "required": ["challenge"],
+            },
+        },
         {
             "name": "challenge_creative",
             "description": (
@@ -482,6 +530,7 @@ class CDAgent:
         self.client = client
         self.name = "Creative Director"
         self.challenger = ChallengerAgent(client)
+        self.cross_industry_analyst = CrossIndustryAnalystAgent(client)
         self.specialists: dict[str, SpecialistAgent] = {
             "activation_planner": ActivationPlannerAgent(client),
             "copywriter": CopyWriterAgent(client),
@@ -505,6 +554,13 @@ class CDAgent:
             print(f"    → CD calls Challenger on concept ({len(concept)} chars)...")
             result = self.challenger.run(concept, knowledge=knowledge)
             print(f"      ✓ Challenger delivered ({len(result.output)} chars)")
+            return result
+
+        if tool_name == "find_cross_industry_analogies":
+            challenge = tool_input.get("challenge", "")
+            print(f"    → CD calls Cross-Industry Analyst: {challenge[:70]}...")
+            result = self.cross_industry_analyst.run(challenge, knowledge=knowledge)
+            print(f"      ✓ Cross-Industry Analyst delivered ({len(result.output)} chars)")
             return result
 
         key = tool_name.replace("brief_", "")
@@ -591,6 +647,25 @@ class CreativeTeam:
     """
 
     ECD_TOOLS: list[dict[str, Any]] = [
+        {
+            "name": "find_cross_industry_analogies",
+            "description": (
+                "Cross-Industry Analystに依頼し、全く異なる業界・ジャンルの成功事例を3〜5個探させる。"
+                "同カテゴリーの参考事例ではなく、構造的メカニズムが移植できる異業種事例を取得する。"
+                "Researcherの調査後、CDブリーフの前に呼ぶ。"
+                "見つかった移植アイデアをCDへのブリーフに組み込む。"
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "challenge": {
+                        "type": "string",
+                        "description": "課題・ブリーフの要約（書き換えられた問いを含む）。",
+                    }
+                },
+                "required": ["challenge"],
+            },
+        },
         {
             "name": "reframe_brief",
             "description": (
@@ -692,11 +767,14 @@ class CreativeTeam:
         "Step 1 — カテゴリーが広告で繰り返してきた「3つの陳腐なアプローチ」を明示し、"
         "禁じ手リストとしてブリーフに追加する。\n"
         "Step 2 — Researcherに調査を依頼する（競合白地・誰も言語化していない真実が主眼）。\n"
-        "Step 3 — Strategic Plannerに戦略を依頼する。\n"
-        "Step 4 — CDに『書き換えられた問い＋禁じ手リスト付き』でクリエイティブチャレンジを渡す。\n"
-        "Step 5 — CDのアウトプットを受け取ったら、必ず challenge_cd_output を呼ぶ。\n"
-        "Step 6 — Challengerの指摘が鋭ければ、CDを再ブリーフする（brief_cd を再度呼ぶ）。\n"
-        "Step 7 — すべてを統合し、ECDとして「このキャンペーンが世界を少し変える理由」"
+        "Step 3 — find_cross_industry_analogies を呼ぶ。"
+        "全く異なる業界の成功事例から移植できるメカニズムを探させる。\n"
+        "Step 4 — Strategic Plannerに戦略を依頼する。\n"
+        "Step 5 — CDに『書き換えられた問い＋禁じ手リスト＋異業種移植アイデア付き』で"
+        "クリエイティブチャレンジを渡す。\n"
+        "Step 6 — CDのアウトプットを受け取ったら、必ず challenge_cd_output を呼ぶ。\n"
+        "Step 7 — Challengerの指摘が鋭ければ、CDを再ブリーフする（brief_cd を再度呼ぶ）。\n"
+        "Step 8 — すべてを統合し、ECDとして「このキャンペーンが世界を少し変える理由」"
         "を言葉にして締める。"
     )
 
@@ -711,6 +789,7 @@ class CreativeTeam:
         self.cd = CDAgent(self.client)
         self.challenger = ChallengerAgent(self.client)
         self.brief_reframer = BriefReframerAgent(self.client)
+        self.cross_industry_analyst = CrossIndustryAnalystAgent(self.client)
         self.knowledge = knowledge_base.load()
 
     def _build_context(self, results: list[AgentResult]) -> str:
@@ -729,6 +808,13 @@ class CreativeTeam:
             print(f"  → ECD calls Brief Reframer ({len(brief)} chars)...")
             result = self.brief_reframer.run(brief, knowledge=self.knowledge)
             print(f"    ✓ Brief Reframer delivered ({len(result.output)} chars)")
+            return result
+
+        if tool_name == "find_cross_industry_analogies":
+            challenge = tool_input.get("challenge", "")
+            print(f"  → ECD calls Cross-Industry Analyst: {challenge[:70]}...")
+            result = self.cross_industry_analyst.run(challenge, knowledge=self.knowledge)
+            print(f"    ✓ Cross-Industry Analyst delivered ({len(result.output)} chars)")
             return result
 
         if tool_name == "challenge_cd_output":
