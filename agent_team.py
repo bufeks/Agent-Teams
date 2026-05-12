@@ -6,6 +6,7 @@ Hierarchy:
   ├── Researcher
   ├── Strategic Planner
   └── CD (sub-orchestrator)
+      ├── Challenger  ← CDのコンセプトを壊す役（チャレンジ後に再構築）
       ├── Activation Planner
       ├── CopyWriter
       └── Art Director
@@ -144,6 +145,35 @@ class ActivationPlannerAgent(SpecialistAgent):
 
 
 # ---------------------------------------------------------------------------
+# Challenger — attacks creative work for being safe / predictable
+# ---------------------------------------------------------------------------
+
+class ChallengerAgent(SpecialistAgent):
+    def __init__(self, client: anthropic.Anthropic):
+        super().__init__(
+            client=client,
+            name="Challenger",
+            system_prompt=(
+                "あなたの仕事はクリエイティブワークを壊すことだ。\n"
+                "提出されたコンセプト・コピー・戦略を読み、\n"
+                "「安全」「予測可能」「カテゴリーの常識の内側」にあるものをすべて暴く。\n\n"
+                "【攻撃の3軸】\n"
+                "1. カテゴリーの陳腐化：このカテゴリーが繰り返してきた嘘・決まり文句・典型表現は何か。"
+                "   このアウトプットはその罠に落ちていないか？\n"
+                "2. 視点の甘さ：最も意外な視点、最も勇気のある問いを誰も立てていないか？"
+                "   なぜこのブランドでなければならないか、が消えていないか？\n"
+                "3. 変化のなさ：このアウトプットが世に出たとして、人の認識・行動・感情が本当に変わるか？"
+                "   変わらないなら、何が足りないか？\n\n"
+                "【アウトプット形式】\n"
+                "■ 陳腐化している点（具体的に）\n"
+                "■ このカテゴリーの「誰もやっていない白地」\n"
+                "■ 次のラウンドで絶対に踏み込むべき方向（2〜3案）\n\n"
+                "遠慮しない。礼儀正しい批評は仕事の邪魔だ。"
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Tier 2 specialists — report to CD
 # ---------------------------------------------------------------------------
 
@@ -235,6 +265,11 @@ class CopyWriterAgent(SpecialistAgent):
                 "search_tcc_copy ツールで TCC コピラ（https://www.tcc.gr.jp/copira/）を検索し、"
                 "テーマや感情に近いコピーの実例を参照してからアウトプットを組み立てること。"
                 "実例から「なぜこのコピーが機能するか」を分析し、そのエッセンスを応用する。\n\n"
+                "【書き始める前に必ず答える問い】\n"
+                "・このカテゴリーが10年間繰り返してきた言葉・表現は何か？（→ 禁止リスト化する）\n"
+                "・この製品・ブランドを「悪役」にしたら、どんな言葉になるか？\n"
+                "・ターゲットの「当たり前」が実は間違っていたとしたら？\n"
+                "・最も小さな真実（誰も言語化していなかった感覚）から始めるとしたら？\n\n"
                 "【アウトプット形式】\n"
                 "複数の方向性（理性・感情・意外性）でコピーを提案し、"
                 "各コピーについて「なぜこの言葉か」を一言で説明する。"
@@ -325,15 +360,39 @@ class CDAgent:
         "You push for ideas that are bold, original, and emotionally resonant. "
         "You challenge the obvious. You protect the work from mediocrity.\n\n"
         "Your team:\n"
+        "- Challenger: attacks your first concept for being safe or predictable — call this FIRST\n"
         "- Activation Planner: consumer journey, channel strategy, touchpoints, events, stunts\n"
         "- CopyWriter: language, headlines, taglines, manifestos, scripts\n"
         "- Art Director: visual language, mood, color, typography, imagery\n\n"
-        "Workflow: define the creative concept first, then brief all three specialists. "
-        "Synthesize their outputs into a cohesive creative + activation package "
-        "to present back to the ECD."
+        "【必須ワークフロー】\n"
+        "Step 0 — コンセプトを立てる前に：このカテゴリーが繰り返してきた3つの陳腐なアプローチを列挙し、"
+        "それを「禁じ手リスト」として明示する。コンセプトはそのどれにも触れてはならない。\n"
+        "Step 1 — 最初のコンセプトドラフトを作る。\n"
+        "Step 2 — 必ず challenge_creative を呼び、Challenger にコンセプトを攻撃させる。\n"
+        "Step 3 — Challengerの指摘を受け、コンセプトを再構築する。最初のドラフトに戻ってはならない。\n"
+        "Step 4 — 再構築したコンセプトでCopyWriter・Art Director・Activation Plannerをブリーフする。\n"
+        "Step 5 — 全員のアウトプットを統合してECDに提出する。"
     )
 
     CD_TOOLS: list[dict[str, Any]] = [
+        {
+            "name": "challenge_creative",
+            "description": (
+                "Challengerにクリエイティブコンセプトを渡し、陳腐化・予測可能・カテゴリー常識への"
+                "安住を攻撃させる。専門家をブリーフする前に必ず呼ぶこと。"
+                "Challengerの指摘を受けてコンセプトを再構築してから次のステップへ進む。"
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "concept": {
+                        "type": "string",
+                        "description": "Challengerに渡すクリエイティブコンセプトのドラフト。",
+                    }
+                },
+                "required": ["concept"],
+            },
+        },
         {
             "name": "brief_activation_planner",
             "description": (
@@ -385,6 +444,7 @@ class CDAgent:
     def __init__(self, client: anthropic.Anthropic):
         self.client = client
         self.name = "Creative Director"
+        self.challenger = ChallengerAgent(client)
         self.specialists: dict[str, SpecialistAgent] = {
             "activation_planner": ActivationPlannerAgent(client),
             "copywriter": CopyWriterAgent(client),
@@ -403,6 +463,13 @@ class CDAgent:
         accumulated: list[AgentResult],
         knowledge: str = "",
     ) -> AgentResult:
+        if tool_name == "challenge_creative":
+            concept = tool_input.get("concept", "")
+            print(f"    → CD calls Challenger on concept ({len(concept)} chars)...")
+            result = self.challenger.run(concept, knowledge=knowledge)
+            print(f"      ✓ Challenger delivered ({len(result.output)} chars)")
+            return result
+
         key = tool_name.replace("brief_", "")
         agent = self.specialists[key]
         context = self._build_context(accumulated) if tool_input.get("include_context", True) else ""
@@ -488,6 +555,25 @@ class CreativeTeam:
 
     ECD_TOOLS: list[dict[str, Any]] = [
         {
+            "name": "challenge_cd_output",
+            "description": (
+                "CDが提出したクリエイティブパッケージをChallengerに渡し、"
+                "陳腐化・予測可能・変化を起こせないリスクを攻撃させる。"
+                "CDのアウトプットを受け取った後、最終化する前に必ず呼ぶこと。"
+                "Challengerの指摘が鋭い場合はCDを再ブリーフする。"
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "creative_package": {
+                        "type": "string",
+                        "description": "ChallengerにレビューさせるCDのクリエイティブパッケージ全文。",
+                    }
+                },
+                "required": ["creative_package"],
+            },
+        },
+        {
             "name": "brief_researcher",
             "description": (
                 "Brief the Researcher to dig into consumer behavior, cultural trends, "
@@ -544,13 +630,17 @@ class CreativeTeam:
         "- Researcher: consumer insight, cultural trends, competitive landscape\n"
         "- Strategic Planner: brand strategy, positioning, communication platform\n"
         "- Creative Director (CD): leads the creative execution team "
-        "(Activation Planner, CopyWriter, Art Director)\n\n"
-        "The CD manages the execution team independently — "
-        "you brief the CD with strategy and challenge, "
-        "and the CD delivers the full creative and activation package.\n\n"
-        "Workflow: Researcher → Strategic Planner → CD → your final synthesis.\n\n"
-        "After the CD delivers, synthesize everything into your ECD final direction: "
-        "the definitive creative output that sets the standard for the campaign."
+        "(Challenger, CopyWriter, Art Director, Activation Planner)\n\n"
+        "【必須ワークフロー】\n"
+        "Step 0 — ブリーフを読んだ直後：このカテゴリーが広告で繰り返してきた"
+        "「3つの陳腐なアプローチ」を明示し、チームへの禁じ手リストとしてブリーフに組み込む。\n"
+        "Step 1 — Researcherに調査を依頼する（競合白地・文化的緊張・誰も言語化していない真実）。\n"
+        "Step 2 — Strategic Plannerに戦略を依頼する。\n"
+        "Step 3 — CDに禁じ手リスト付きでクリエイティブチャレンジを渡す。\n"
+        "Step 4 — CDのアウトプットを受け取ったら、必ず challenge_cd_output を呼ぶ。\n"
+        "Step 5 — Challengerの指摘が鋭ければ、CDを再ブリーフする（brief_cd を再度呼ぶ）。\n"
+        "Step 6 — 最終的にすべてを統合し、ECDとして「このキャンペーンが世界を少し変える理由」"
+        "を言葉にして締める。"
     )
 
     def __init__(self, api_key: str | None = None):
@@ -562,6 +652,7 @@ class CreativeTeam:
             "strategic_planner": StrategicPlannerAgent(self.client),
         }
         self.cd = CDAgent(self.client)
+        self.challenger = ChallengerAgent(self.client)
         self.knowledge = knowledge_base.load()
 
     def _build_context(self, results: list[AgentResult]) -> str:
@@ -575,6 +666,13 @@ class CreativeTeam:
         tool_input: dict[str, Any],
         accumulated: list[AgentResult],
     ) -> AgentResult:
+        if tool_name == "challenge_cd_output":
+            package = tool_input.get("creative_package", "")
+            print(f"  → ECD calls Challenger on CD output ({len(package)} chars)...")
+            result = self.challenger.run(package, knowledge=self.knowledge)
+            print(f"    ✓ Challenger delivered ({len(result.output)} chars)")
+            return result
+
         context = self._build_context(accumulated) if tool_input.get("include_context", True) else ""
         task = tool_input["task"]
 
