@@ -15,9 +15,10 @@ SUPPORTED = {".pdf", ".ppt", ".pptx", ".txt", ".md"}
 
 def _read_pdf(path: Path) -> str:
     try:
-        from pypdf import PdfReader
-        reader = PdfReader(path)
-        pages = [page.extract_text() or "" for page in reader.pages]
+        import fitz  # pymupdf
+        doc = fitz.open(path)
+        pages = [doc[i].get_text() for i in range(len(doc))]
+        doc.close()
         return "\n\n".join(p for p in pages if p.strip())
     except Exception as e:
         return f"[PDF読み込みエラー: {e}]"
