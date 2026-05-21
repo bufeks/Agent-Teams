@@ -179,31 +179,6 @@ class SpecialistAgent:
 # ---------------------------------------------------------------------------
 
 
-class BriefReframerAgent(SpecialistAgent):
-    def __init__(self, client: anthropic.Anthropic):
-        super().__init__(
-            client=client,
-            name="Brief Reframer",
-            system_prompt=(
-                "あなたの仕事は、クライアントから届いた生ブリーフを解剖することだ。\n\n"
-                "【問い出す4つの軸】\n"
-                "1. 前提の解体：このブリーフが「当たり前」として受け入れている仮定は何か？"
-                "   ターゲット設定、課題の定義、KPI、競合の枠組み——それぞれ本当に正しいか？\n"
-                "2. 本質的な課題：クライアントが『言っていること』と『本当に必要なこと』は一致しているか？"
-                "   表面の要望の裏に隠れている、より根本的な問いは何か？\n"
-                "3. 視点の転換：このブリーフをターゲット以外の誰か（競合・社会・未来の消費者）の"
-                "   目線で読み直すと、何が見えてくるか？\n"
-                "4. 問いの書き換え：「〇〇を伝えたい」ではなく「〇〇という問いを社会に投げかけたい」"
-                "   に変換すると、どんな問いになるか？\n\n"
-                "【アウトプット形式】\n"
-                "■ 元ブリーフの前提リスト（疑うべき箇所に★）\n"
-                "■ 本質的な課題（クライアントが言っていない言葉で）\n"
-                "■ 書き換えられた問い（クリエイティブチームへの挑発として）\n"
-                "■ このブリーフで絶対に陥ってはいけない罠\n\n"
-                "クライアントの言葉を尊重しつつ、その先にある本質を暴く。"
-            ),
-        )
-
 
 class ResearcherAgent(SpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
@@ -663,24 +638,6 @@ class CreativeTeam:
 
     ECD_TOOLS: list[dict[str, Any]] = [
         {
-            "name": "reframe_brief",
-            "description": (
-                "Brief Reframerに生ブリーフを渡し、前提の解体・本質的な課題の再定義・"
-                "問いの書き換えを行わせる。これは必ずワークフローの最初に呼ぶこと。"
-                "Reframerが出力した『書き換えられた問い』を、以降のすべてのブリーフに組み込む。"
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "brief": {
-                        "type": "string",
-                        "description": "クライアントから届いた生ブリーフの全文。",
-                    }
-                },
-                "required": ["brief"],
-            },
-        },
-        {
             "name": "challenge_cd_output",
             "description": (
                 "CDが提出したクリエイティブパッケージをChallengerに渡し、"
@@ -758,8 +715,12 @@ class CreativeTeam:
         "- Creative Director (CD): leads the creative execution team "
         "(CopyWriter, Art Director, Activation Planner)\n\n"
         "【必須ワークフロー】\n"
-        "Step 0 — 必ず reframe_brief を呼ぶ。生ブリーフの前提を解体し、"
-        "本質的な問いに書き換える。以降のすべてのブリーフにこの『書き換えられた問い』を組み込む。\n"
+        "Step 0 — ブリーフを受け取ったら、まず自分自身で解剖する。\n"
+        "   ・前提の解体：ターゲット設定・課題定義・KPI・競合の枠組みのうち、疑うべき仮定はどれか\n"
+        "   ・本質的な課題：クライアントが言っていることと、本当に必要なことは一致しているか\n"
+        "   ・問いの書き換え：「〇〇を伝えたい」を「〇〇という問いを社会に投げかけたい」に変換する\n"
+        "   ・絶対に陥ってはいけない罠を明示する\n"
+        "   この書き換えた問いを、以降のすべてのブリーフに組み込む。\n"
         "Step 1 — カテゴリーが広告で繰り返してきた「3つの陳腐なアプローチ」を明示し、"
         "禁じ手リストとしてブリーフに追加する。\n"
         "Step 2 — Researcherに調査を依頼する（競合白地・誰も言語化していない真実が主眼）。\n"
@@ -782,7 +743,6 @@ class CreativeTeam:
         }
         self.cd = CDAgent(self.client)
         self.challenger = ChallengerAgent(self.client)
-        self.brief_reframer = BriefReframerAgent(self.client)
         self.knowledge = knowledge_base.load()
 
     def _build_context(self, results: list[AgentResult]) -> str:
@@ -796,13 +756,6 @@ class CreativeTeam:
         tool_input: dict[str, Any],
         accumulated: list[AgentResult],
     ) -> AgentResult:
-        if tool_name == "reframe_brief":
-            brief = tool_input.get("brief", "")
-            print(f"  → ECD calls Brief Reframer ({len(brief)} chars)...")
-            result = self.brief_reframer.run(brief, knowledge=self.knowledge)
-            print(f"    ✓ Brief Reframer delivered ({len(result.output)} chars)")
-            return result
-
         if tool_name == "challenge_cd_output":
             package = tool_input.get("creative_package", "")
             print(f"  → ECD calls Challenger on CD output ({len(package)} chars)...")
