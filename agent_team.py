@@ -19,6 +19,7 @@ import html as html_module
 import urllib.parse
 import urllib.request
 import re
+import concurrent.futures
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -458,79 +459,46 @@ class ArtDirectorAgent(SpecialistAgent):
 
 class CDAgent:
     """
-    Creative Director — sub-orchestrator.
-    Receives the strategic brief from the ECD, then independently
-    briefs CopyWriter and Art Director to build the creative execution.
-    Returns a consolidated creative package back to the ECD.
+    Creative Director — parallel sub-orchestrator.
+
+    Workflow:
+      1. CD develops creative concept (single Claude call)
+      2. Round 1: CopyWriter / Art Director / Activation Planner run in parallel
+      3. Round 2: all three deepen their work seeing each other's Round 1 outputs (parallel)
+      4. CD synthesizes into a unified creative package (single Claude call)
     """
 
-    CD_SYSTEM = (
-        "You are a Creative Director (CD) at a world-class creative agency. "
-        "You sit between the ECD's strategic direction and the execution team. "
-        "Your role: transform strategy into a powerful creative concept, "
-        "then orchestrate your team to execute it across copy, visuals, and activation. "
-        "You push for ideas that are bold, original, and emotionally resonant. "
-        "You challenge the obvious. You protect the work from mediocrity.\n\n"
-        "Your team:\n"
-        "- Activation Planner: consumer journey, channel strategy, touchpoints, events, stunts\n"
-        "- CopyWriter: language, headlines, taglines, manifestos, scripts\n"
-        "- Art Director: visual language, mood, color, typography, imagery\n\n"
-        "【必須ワークフロー】\n"
-        "Step 0 — コンセプトを立てる前に：このカテゴリーが繰り返してきた3つの陳腐なアプローチを列挙し、"
-        "それを「禁じ手リスト」として明示する。コンセプトはそのどれにも触れてはならない。\n"
-        "Step 1 — ECDから受け取った戦略・異業種移植アイデア・禁じ手リストをもとにコンセプトを立てる。\n"
-        "Step 2 — CopyWriter・Art Director・Activation Plannerをブリーフする。\n"
-        "Step 3 — 全員のアウトプットを統合してECDに提出する。"
+    CD_CONCEPT_SYSTEM = (
+        "あなたは世界トップクラスのクリエイティブエージェンシーのクリエイティブディレクターだ。\n\n"
+        "ECDから受け取った戦略・リサーチ・異業種移植アイデア・禁じ手リストをもとに、"
+        "強力なクリエイティブコンセプトを開発する。\n\n"
+        "【コンセプト開発の原則】\n"
+        "・禁じ手リストのどれにも触れない\n"
+        "・異業種移植アイデアの構造的メカニズムを活かす\n"
+        "・「なぜこのブランドでなければならないか」が明確\n"
+        "・世に出た瞬間に認識・感情・行動を変えるポテンシャルがある\n\n"
+        "【アウトプット形式】\n"
+        "■ コアコンセプト（一文）\n"
+        "■ コンセプトの背景にある人間的真実\n"
+        "■ このコンセプトが機能する構造的理由\n"
+        "■ CopyWriter・Art Director・Activation Plannerへの個別ブリーフ"
     )
 
-    CD_TOOLS: list[dict[str, Any]] = [
-        {
-            "name": "brief_activation_planner",
-            "description": (
-                "Brief the Activation Planner to design the channel-by-channel activation plan — "
-                "consumer journey, touchpoints, events, social, OOH, and experiential moments. "
-                "Use this once the creative concept is set to map how it comes to life."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "task": {"type": "string", "description": "The activation planning task."},
-                    "include_context": {"type": "boolean", "default": True},
-                },
-                "required": ["task"],
-            },
-        },
-        {
-            "name": "brief_copywriter",
-            "description": (
-                "Brief the CopyWriter to craft the language of the campaign — "
-                "headlines, taglines, manifesto, scripts, or any copy needed."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "task": {"type": "string", "description": "The copy task."},
-                    "include_context": {"type": "boolean", "default": True},
-                },
-                "required": ["task"],
-            },
-        },
-        {
-            "name": "brief_art_director",
-            "description": (
-                "Brief the Art Director to define the visual language — "
-                "mood, aesthetic, color, typography, imagery style, and the visual world."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "task": {"type": "string", "description": "The visual direction task."},
-                    "include_context": {"type": "boolean", "default": True},
-                },
-                "required": ["task"],
-            },
-        },
-    ]
+    CD_SYNTHESIS_SYSTEM = (
+        "あなたは世界トップクラスのクリエイティブエージェンシーのクリエイティブディレクターだ。\n\n"
+        "チームのアウトプット（CopyWriter・Art Director・Activation Planner の2ラウンド分）を"
+        "統合し、ECDに提出するクリエイティブパッケージを完成させる。\n\n"
+        "【統合の観点】\n"
+        "・コピー・ビジュアル・アクティベーションが一つのコンセプトとして貫通しているか\n"
+        "・それぞれの専門家の最良のアイデアを選び取り、矛盾を解消しているか\n"
+        "・ECDへの提出物として、意思決定できるレベルの具体性があるか\n\n"
+        "【アウトプット形式】\n"
+        "■ クリエイティブコンセプト（確定版）\n"
+        "■ ヒーローコピー\n"
+        "■ ビジュアルワールド\n"
+        "■ アクティベーション設計\n"
+        "■ CDとしての総括コメント"
+    )
 
     def __init__(self, client: anthropic.Anthropic):
         self.client = client
@@ -541,243 +509,165 @@ class CDAgent:
             "art_director": ArtDirectorAgent(client),
         }
 
-    def _build_context(self, results: list[AgentResult]) -> str:
-        if not results:
-            return ""
-        return "\n\n---\n\n".join(f"### {r.agent_name}:\n{r.output}" for r in results)
-
-    def _dispatch(
-        self,
-        tool_name: str,
-        tool_input: dict[str, Any],
-        accumulated: list[AgentResult],
-        knowledge: str = "",
-    ) -> AgentResult:
-        key = tool_name.replace("brief_", "")
-        agent = self.specialists[key]
-        context = self._build_context(accumulated) if tool_input.get("include_context", True) else ""
-        print(f"    → CD briefs {agent.name}: {tool_input['task'][:70]}...")
-        result = agent.run(tool_input["task"], context, knowledge)
-        print(f"      ✓ {agent.name} delivered ({len(result.output)} chars)")
-        return result
+    def _call_claude(self, system: str, content: str) -> str:
+        response = self.client.messages.create(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            thinking={"type": "adaptive"},
+            system=system,
+            messages=[{"role": "user", "content": content}],
+        )
+        return next((b.text for b in response.content if b.type == "text"), "")
 
     def run(self, task: str, context: str = "", knowledge: str = "") -> AgentResult:
-        """Run the CD sub-orchestrator loop and return a consolidated AgentResult."""
         parts = []
         if knowledge:
             parts.append(knowledge)
         if context:
-            parts.append(f"Strategic context from upstream:\n{context}")
-        parts.append(f"Your creative challenge:\n{task}")
-        user_content = "\n\n".join(parts)
-
-        messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
-        sub_results: list[AgentResult] = []
-
+            parts.append(f"ECDからの戦略コンテキスト:\n{context}")
+        parts.append(f"クリエイティブチャレンジ:\n{task}")
+        base = "\n\n".join(parts)
 
         try:
-            while True:
-                response = self.client.messages.create(
-                    model=MODEL,
-                    max_tokens=MAX_TOKENS,
-                    thinking={"type": "adaptive"},
-                    system=self.CD_SYSTEM,
-                    tools=self.CD_TOOLS,
-                    messages=messages,
-                )
+            # Step 1: CDがコンセプトを開発
+            print("  [CD] コンセプト開発中...")
+            concept = self._call_claude(self.CD_CONCEPT_SYSTEM, base)
+            concept_context = f"{base}\n\n### CDコンセプト:\n{concept}"
 
-                tool_blocks = [b for b in response.content if b.type == "tool_use"]
-                text_blocks = [b for b in response.content if b.type == "text"]
-                messages.append({"role": "assistant", "content": response.content})
+            # Step 2: Round 1 — 3専門家が並列で独立して思考
+            print("  [CD] Round 1 — CW / AD / AP 並列実行...")
+            r1_tasks = {
+                "copywriter":        "上記のコンセプトに基づき、コピーの方向性を複数提案してください。",
+                "art_director":      "上記のコンセプトに基づき、ビジュアルワールドを定義してください。",
+                "activation_planner":"上記のコンセプトに基づき、アクティベーション施策を設計してください。",
+            }
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+                fs1 = {
+                    k: ex.submit(self.specialists[k].run, t, concept_context, knowledge)
+                    for k, t in r1_tasks.items()
+                }
+                r1 = {k: f.result() for k, f in fs1.items()}
+            for r in r1.values():
+                print(f"    ✓ {r.agent_name} Round 1 ({len(r.output)} chars)")
 
-                if response.stop_reason == "end_turn":
-                    final = next((b.text for b in text_blocks), "")
-                    # Prepend sub-agent outputs for full transparency
-                    if sub_results:
-                        sub_summary = "\n\n".join(
-                            f"**{r.agent_name}**\n{r.output}" for r in sub_results
-                        )
-                        final = f"{sub_summary}\n\n---\n\n**CD Creative Package:**\n{final}"
-                    return AgentResult(
-                        agent_name=self.name, task=task, output=final, success=True
-                    )
+            # Step 3: Round 2 — 互いのアウトプットを見て深化（並列）
+            print("  [CD] Round 2 — 相互参照して深化（並列）...")
+            cross_context = concept_context + "\n\n" + "\n\n".join(
+                f"### {r.agent_name} Round 1:\n{r.output}" for r in r1.values()
+            )
+            r2_tasks = {
+                "copywriter":        "他のメンバーのアウトプットを踏まえ、コピーをさらに深化・研ぎ澄ましてください。",
+                "art_director":      "他のメンバーのアウトプットを踏まえ、ビジュアルワールドを深化・統合してください。",
+                "activation_planner":"他のメンバーのアウトプットを踏まえ、施策をより一貫性のある形に深化させてください。",
+            }
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+                fs2 = {
+                    k: ex.submit(self.specialists[k].run, t, cross_context, knowledge)
+                    for k, t in r2_tasks.items()
+                }
+                r2 = {k: f.result() for k, f in fs2.items()}
+            for r in r2.values():
+                print(f"    ✓ {r.agent_name} Round 2 ({len(r.output)} chars)")
 
-                if response.stop_reason != "tool_use":
-                    output = next((b.text for b in text_blocks), "No creative output.")
-                    return AgentResult(
-                        agent_name=self.name, task=task, output=output, success=True
-                    )
+            # Step 4: CD が統合
+            print("  [CD] 統合中...")
+            all_outputs = "\n\n".join(
+                f"### {r.agent_name} Round 2:\n{r.output}" for r in r2.values()
+            )
+            synthesis = self._call_claude(
+                self.CD_SYNTHESIS_SYSTEM,
+                f"{concept_context}\n\n{all_outputs}",
+            )
 
-                tool_results = []
-                for tb in tool_blocks:
-                    result = self._dispatch(tb.name, tb.input, sub_results, knowledge)
-                    sub_results.append(result)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tb.id,
-                        "content": result.output if result.success else f"Error: {result.output}",
-                    })
-                messages.append({"role": "user", "content": tool_results})
+            full_output = (
+                f"**コンセプト:**\n{concept}\n\n"
+                + "\n\n".join(f"**{r.agent_name} Round 1:**\n{r.output}" for r in r1.values())
+                + "\n\n"
+                + "\n\n".join(f"**{r.agent_name} Round 2:**\n{r.output}" for r in r2.values())
+                + f"\n\n---\n\n**CDクリエイティブパッケージ:**\n{synthesis}"
+            )
+            return AgentResult(agent_name=self.name, task=task, output=full_output, success=True)
 
         except Exception as e:
             return AgentResult(agent_name=self.name, task=task, output=f"Error: {e}", success=False)
 
 
 # ---------------------------------------------------------------------------
-# ECD — top-level orchestrator
+# ECD — top-level orchestrator (explicit parallel phases)
 # ---------------------------------------------------------------------------
 
 class CreativeTeam:
     """
     ECD-led creative team orchestrator.
 
-    Hierarchy:
-      ECD → Researcher, Strategic Planner, Planner, CD
-      CD  → CopyWriter, Art Director
+    Phases:
+      0. ECD analyzes and reframes the brief (single Claude call)
+      1. Researcher + Strategic Planner run in parallel
+      2. ECD synthesizes phase 1 into a CD brief (single Claude call)
+      3. CDAgent runs (parallel CW/AD/AP × 2 rounds internally)
+      4. Challenger reviews CD package
+      5. ECD delivers final direction (single Claude call)
     """
 
-    ECD_TOOLS: list[dict[str, Any]] = [
-        {
-            "name": "challenge_cd_output",
-            "description": (
-                "CDが提出したクリエイティブパッケージをChallengerに渡し、"
-                "陳腐化・予測可能・変化を起こせないリスクを攻撃させる。"
-                "CDのアウトプットを受け取った後、最終化する前に必ず呼ぶこと。"
-                "Challengerの指摘が鋭い場合はCDを再ブリーフする。"
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "creative_package": {
-                        "type": "string",
-                        "description": "ChallengerにレビューさせるCDのクリエイティブパッケージ全文。",
-                    }
-                },
-                "required": ["creative_package"],
-            },
-        },
-        {
-            "name": "brief_researcher",
-            "description": (
-                "Brief the Researcher to dig into consumer behavior, cultural trends, "
-                "competitive landscape, and uncover the human insight that will fuel the work. "
-                "Use this first — great creative is built on great research."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "task": {"type": "string", "description": "Research task or question."},
-                    "include_context": {"type": "boolean", "default": True},
-                },
-                "required": ["task"],
-            },
-        },
-        {
-            "name": "brief_strategic_planner",
-            "description": (
-                "Brief the Strategic Planner to define brand positioning, "
-                "communication strategy, and the creative platform."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "task": {"type": "string", "description": "Strategic challenge to address."},
-                    "include_context": {"type": "boolean", "default": True},
-                },
-                "required": ["task"],
-            },
-        },
-        {
-            "name": "brief_cd",
-            "description": (
-                "Brief the Creative Director with the strategic brief and challenge. "
-                "The CD will independently manage CopyWriter and Art Director "
-                "to deliver the full creative execution. "
-                "Use this after research, strategy, and the brief are in place."
-            ),
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "task": {"type": "string", "description": "Creative challenge for the CD."},
-                    "include_context": {"type": "boolean", "default": True},
-                },
-                "required": ["task"],
-            },
-        },
-    ]
+    ECD_ANALYZE_SYSTEM = (
+        "あなたは世界トップクラスのクリエイティブエージェンシーのECDだ。\n\n"
+        "クライアントから届いたブリーフを解剖し、チームを正しい方向へ向かわせる。\n\n"
+        "【解剖の4軸】\n"
+        "1. 前提の解体：ターゲット設定・課題定義・KPI・競合の枠組みのうち、疑うべき仮定を特定する\n"
+        "2. 本質的な課題：クライアントが言っていることと本当に必要なことのギャップを明らかにする\n"
+        "3. 問いの書き換え：「〇〇を伝えたい」を「〇〇という問いを社会に投げかけたい」に変換する\n"
+        "4. 禁じ手リスト：このカテゴリーが広告で繰り返してきた3つの陳腐なアプローチを列挙する\n\n"
+        "【アウトプット形式】\n"
+        "■ 前提の解体（疑うべき仮定に★）\n"
+        "■ 本質的な課題\n"
+        "■ 書き換えられた問い（これが以降のすべてのブリーフの核になる）\n"
+        "■ 禁じ手リスト\n"
+        "■ 絶対に陥ってはいけない罠"
+    )
 
-    ECD_SYSTEM = (
-        "You are an Executive Creative Director (ECD) at a world-class creative agency. "
-        "You lead the team and set the creative vision.\n\n"
-        "Your direct reports:\n"
-        "- Researcher: consumer insight, cultural trends, competitive white space\n"
-        "- Strategic Planner: brand strategy, positioning, communication platform, cross-industry transplants\n"
-        "- Creative Director (CD): leads the creative execution team "
-        "(CopyWriter, Art Director, Activation Planner)\n\n"
-        "【必須ワークフロー】\n"
-        "Step 0 — ブリーフを受け取ったら、まず自分自身で解剖する。\n"
-        "   ・前提の解体：ターゲット設定・課題定義・KPI・競合の枠組みのうち、疑うべき仮定はどれか\n"
-        "   ・本質的な課題：クライアントが言っていることと、本当に必要なことは一致しているか\n"
-        "   ・問いの書き換え：「〇〇を伝えたい」を「〇〇という問いを社会に投げかけたい」に変換する\n"
-        "   ・絶対に陥ってはいけない罠を明示する\n"
-        "   この書き換えた問いを、以降のすべてのブリーフに組み込む。\n"
-        "Step 1 — カテゴリーが広告で繰り返してきた「3つの陳腐なアプローチ」を明示し、"
-        "禁じ手リストとしてブリーフに追加する。\n"
-        "Step 2 — Researcherに調査を依頼する（競合白地・誰も言語化していない真実が主眼）。\n"
-        "Step 3 — Strategic Plannerに戦略を依頼する（異業種移植アイデアを含む）。\n"
-        "Step 4 — CDに『書き換えられた問い＋禁じ手リスト＋異業種移植アイデア付き』で"
-        "クリエイティブチャレンジを渡す。\n"
-        "Step 5 — CDのアウトプットを受け取ったら、必ず challenge_cd_output を呼ぶ。\n"
-        "Step 6 — Challengerの指摘が鋭ければ、CDを再ブリーフする（brief_cd を再度呼ぶ）。\n"
-        "Step 7 — すべてを統合し、ECDとして「このキャンペーンが世界を少し変える理由」"
-        "を言葉にして締める。"
+    ECD_CD_BRIEF_SYSTEM = (
+        "あなたは世界トップクラスのクリエイティブエージェンシーのECDだ。\n\n"
+        "自分のブリーフ解析・Researcherの調査・Strategic Plannerの戦略を統合し、"
+        "Creative Director（CD）に渡すクリエイティブチャレンジを作る。\n\n"
+        "CDブリーフには必ず以下を含める:\n"
+        "・書き換えられた問い\n"
+        "・禁じ手リスト\n"
+        "・最も刺さるリサーチインサイト\n"
+        "・異業種移植アイデアの中で最も可能性のあるもの\n"
+        "・ECDとしての期待水準（カンヌ獲れるか？世界を少し変えるか？）\n\n"
+        "簡潔に、しかしCDが迷わない具体性で書く。"
+    )
+
+    ECD_FINAL_SYSTEM = (
+        "あなたは世界トップクラスのクリエイティブエージェンシーのECDだ。\n\n"
+        "チーム全員のアウトプット（Research・Strategy・CD・Challenger）を踏まえ、"
+        "ECDとして最終ディレクションを出す。\n\n"
+        "【最終ディレクションに含めるもの】\n"
+        "■ このキャンペーンが世界を少し変える理由\n"
+        "■ CDパッケージのどこを採用し、どこを修正するか\n"
+        "■ Challengerの指摘のうち、次のラウンドで必ず解決すべき点\n"
+        "■ クライアントプレゼンに向けてのECDコメント"
     )
 
     def __init__(self, api_key: str | None = None):
         self.client = anthropic.Anthropic(
             api_key=api_key or os.environ.get("ANTHROPIC_API_KEY")
         )
-        self.tier1: dict[str, SpecialistAgent] = {
-            "researcher": ResearcherAgent(self.client),
-            "strategic_planner": StrategicPlannerAgent(self.client),
-        }
+        self.researcher = ResearcherAgent(self.client)
+        self.strategic_planner = StrategicPlannerAgent(self.client)
         self.cd = CDAgent(self.client)
         self.challenger = ChallengerAgent(self.client)
         self.knowledge = knowledge_base.load()
 
-    def _build_context(self, results: list[AgentResult]) -> str:
-        if not results:
-            return ""
-        return "\n\n---\n\n".join(f"### {r.agent_name}:\n{r.output}" for r in results)
-
-    def _dispatch_tool(
-        self,
-        tool_name: str,
-        tool_input: dict[str, Any],
-        accumulated: list[AgentResult],
-    ) -> AgentResult:
-        if tool_name == "challenge_cd_output":
-            package = tool_input.get("creative_package", "")
-            print(f"  → ECD calls Challenger on CD output ({len(package)} chars)...")
-            result = self.challenger.run(package, knowledge=self.knowledge)
-            print(f"    ✓ Challenger delivered ({len(result.output)} chars)")
-            return result
-
-        context = self._build_context(accumulated) if tool_input.get("include_context", True) else ""
-        task = tool_input["task"]
-
-        if tool_name == "brief_cd":
-            print(f"  → ECD briefs Creative Director: {task[:80]}...")
-            result = self.cd.run(task, context, self.knowledge)
-            print(f"    ✓ Creative Director delivered ({len(result.output)} chars)")
-            return result
-
-        key = tool_name.replace("brief_", "")
-        agent = self.tier1[key]
-        print(f"  → Briefing {agent.name}: {task[:80]}...")
-        result = agent.run(task, context, self.knowledge)
-        print(f"    ✓ {agent.name} delivered ({len(result.output)} chars)")
-        return result
+    def _call_claude(self, system: str, content: str) -> str:
+        response = self.client.messages.create(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            thinking={"type": "adaptive"},
+            system=system,
+            messages=[{"role": "user", "content": content}],
+        )
+        return next((b.text for b in response.content if b.type == "text"), "")
 
     def run(self, brief: str, verbose: bool = True) -> TeamResult:
         if verbose:
@@ -786,42 +676,70 @@ class CreativeTeam:
             print(f"{'='*60}")
 
         team_result = TeamResult(original_task=brief)
-        messages: list[dict[str, Any]] = [{"role": "user", "content": brief}]
 
-        while True:
-            response = self.client.messages.create(
-                model=MODEL,
-                max_tokens=MAX_TOKENS,
-                thinking={"type": "adaptive"},
-                system=self.ECD_SYSTEM,
-                tools=self.ECD_TOOLS,
-                messages=messages,
-            )
+        # Phase 0: ECD がブリーフを解析・書き換え
+        print("\n[Phase 0] ECD — ブリーフ解析中...")
+        ecd_analysis = self._call_claude(
+            self.ECD_ANALYZE_SYSTEM,
+            f"ブリーフ:\n{brief}" + (f"\n\nナレッジ:\n{self.knowledge}" if self.knowledge else ""),
+        )
+        team_result.agent_results.append(
+            AgentResult("ECD — ブリーフ解析", brief, ecd_analysis, True)
+        )
+        print(f"  ✓ ECD分析完了 ({len(ecd_analysis)} chars)")
 
-            tool_blocks = [b for b in response.content if b.type == "tool_use"]
-            text_blocks = [b for b in response.content if b.type == "text"]
-            messages.append({"role": "assistant", "content": response.content})
+        # Phase 1: Researcher + Strategic Planner を並列実行
+        print("\n[Phase 1] Researcher + Strategic Planner — 並列実行中...")
+        research_input = f"{ecd_analysis}\n\n元ブリーフ:\n{brief}"
+        strategy_input = f"{ecd_analysis}\n\n元ブリーフ:\n{brief}"
 
-            if response.stop_reason == "end_turn":
-                team_result.final_answer = next((b.text for b in text_blocks), "")
-                break
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            f_r = ex.submit(self.researcher.run, research_input, "", self.knowledge)
+            f_s = ex.submit(self.strategic_planner.run, strategy_input, "", self.knowledge)
+            research_result = f_r.result()
+            strategy_result = f_s.result()
 
-            if response.stop_reason != "tool_use":
-                team_result.final_answer = next(
-                    (b.text for b in text_blocks), "No creative direction produced."
-                )
-                break
+        team_result.agent_results.extend([research_result, strategy_result])
+        print(f"  ✓ Researcher ({len(research_result.output)} chars)")
+        print(f"  ✓ Strategic Planner ({len(strategy_result.output)} chars)")
 
-            tool_results = []
-            for tb in tool_blocks:
-                result = self._dispatch_tool(tb.name, tb.input, team_result.agent_results)
-                team_result.agent_results.append(result)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tb.id,
-                    "content": result.output if result.success else f"Error: {result.output}",
-                })
+        # Phase 2: ECD が Phase 1 を統合して CD ブリーフを生成
+        print("\n[Phase 2] ECD — CDブリーフ生成中...")
+        cd_brief = self._call_claude(
+            self.ECD_CD_BRIEF_SYSTEM,
+            f"### ECD分析:\n{ecd_analysis}\n\n"
+            f"### Research:\n{research_result.output}\n\n"
+            f"### Strategic Planner:\n{strategy_result.output}\n\n"
+            f"元ブリーフ:\n{brief}",
+        )
+        cd_context = (
+            f"### ECD分析:\n{ecd_analysis}\n\n"
+            f"### Research:\n{research_result.output}\n\n"
+            f"### Strategic Planner:\n{strategy_result.output}"
+        )
+        print(f"  ✓ CDブリーフ生成完了 ({len(cd_brief)} chars)")
 
-            messages.append({"role": "user", "content": tool_results})
+        # Phase 3: CD が並列チームで実行（内部で2ラウンド）
+        print("\n[Phase 3] CD チーム — 並列 × 2ラウンド...")
+        cd_result = self.cd.run(cd_brief, cd_context, self.knowledge)
+        team_result.agent_results.append(cd_result)
+        print(f"  ✓ CDパッケージ完成 ({len(cd_result.output)} chars)")
+
+        # Phase 4: Challenger が CD パッケージを攻撃
+        print("\n[Phase 4] Challenger — CDアウトプットをレビュー中...")
+        challenger_result = self.challenger.run(cd_result.output, knowledge=self.knowledge)
+        team_result.agent_results.append(challenger_result)
+        print(f"  ✓ Challenger完了 ({len(challenger_result.output)} chars)")
+
+        # Phase 5: ECD が全アウトプットを統合してファイナルディレクション
+        print("\n[Phase 5] ECD — ファイナルディレクション...")
+        all_context = "\n\n".join(
+            f"### {r.agent_name}:\n{r.output}" for r in team_result.agent_results
+        )
+        team_result.final_answer = self._call_claude(
+            self.ECD_FINAL_SYSTEM,
+            f"元ブリーフ:\n{brief}\n\n{all_context}",
+        )
+        print(f"  ✓ ファイナルディレクション完了 ({len(team_result.final_answer)} chars)")
 
         return team_result
