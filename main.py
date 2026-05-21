@@ -8,12 +8,26 @@ Run a preset brief or pass your own as a command-line argument.
 """
 
 import os
+import re
 import sys
+from datetime import datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 import knowledge_base
 from agent_team import CreativeTeam
+
+OUTPUT_DIR = Path(__file__).parent / "output"
+
+
+def _save_html(result, brief: str) -> Path:
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    slug = re.sub(r"[^\w぀-鿿]", "_", brief[:30]).strip("_")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = OUTPUT_DIR / f"{timestamp}_{slug}.html"
+    path.write_text(result.to_html(), encoding="utf-8")
+    return path
 
 load_dotenv()
 
@@ -68,7 +82,8 @@ def run_demo(brief_index: int | None = None) -> None:
         print(f"{'#'*60}")
 
         result = team.run(demo["brief"], verbose=True)
-        print(result.summary())
+        path = _save_html(result, demo["name"])
+        print(f"\n出力: {path}")
         print()
 
 
@@ -81,7 +96,8 @@ def run_custom(brief: str) -> None:
     print(knowledge_base.summary())
     team = CreativeTeam(api_key=api_key)
     result = team.run(brief, verbose=True)
-    print(result.summary())
+    path = _save_html(result, brief)
+    print(f"\n出力: {path}")
 
 
 if __name__ == "__main__":

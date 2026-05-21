@@ -15,10 +15,12 @@ knowledge/ フォルダに PDF・PPT・TXT を置くと全エージェントの�
 """
 
 import os
+import html as html_module
 import urllib.parse
 import urllib.request
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import knowledge_base
 from typing import Any
@@ -49,8 +51,96 @@ class TeamResult:
             status = "✓" if r.success else "✗"
             lines.append(f"[{status}] {r.agent_name}")
             lines.append(f"    {r.output[:300]}{'...' if len(r.output) > 300 else ''}\n")
-        lines.append(f"--- ECD Final Direction ---\n{self.final_answer}")
+        lines.append(f"--- ECDファイナルディレクション ---\n{self.final_answer}")
         return "\n".join(lines)
+
+    def to_html(self) -> str:
+        def md_to_html(text: str) -> str:
+            t = html_module.escape(text)
+            t = re.sub(r"^### (.+)$", r"<h3>\1</h3>", t, flags=re.MULTILINE)
+            t = re.sub(r"^## (.+)$", r"<h2>\1</h2>", t, flags=re.MULTILINE)
+            t = re.sub(r"^# (.+)$", r"<h1>\1</h1>", t, flags=re.MULTILINE)
+            t = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", t)
+            t = re.sub(r"\*(.+?)\*", r"<em>\1</em>", t)
+            t = re.sub(r"^[-•] (.+)$", r"<li>\1</li>", t, flags=re.MULTILINE)
+            t = re.sub(r"(<li>.*?</li>\n?)+", lambda m: f"<ul>{m.group()}</ul>", t, flags=re.DOTALL)
+            t = re.sub(r"^---+$", r"<hr>", t, flags=re.MULTILINE)
+            t = re.sub(r"\n{2,}", "</p><p>", t)
+            t = re.sub(r"\n", "<br>", t)
+            return f"<p>{t}</p>"
+
+        generated_at = datetime.now().strftime("%Y年%m月%d日 %H:%M")
+        agent_sections = ""
+        for r in self.agent_results:
+            status_class = "success" if r.success else "error"
+            status_label = "完了" if r.success else "エラー"
+            agent_sections += f"""
+            <div class="agent-card {status_class}">
+                <div class="agent-header">
+                    <span class="agent-name">{html_module.escape(r.agent_name)}</span>
+                    <span class="agent-status">{status_label}</span>
+                </div>
+                <div class="agent-body">{md_to_html(r.output)}</div>
+            </div>"""
+
+        return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>クリエイティブアウトプット — {html_module.escape(self.original_task[:60])}</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: "Hiragino Sans", "Yu Gothic", sans-serif; background: #f5f5f0; color: #1a1a1a; line-height: 1.8; }}
+  .page {{ max-width: 960px; margin: 0 auto; padding: 48px 24px; }}
+  header {{ border-bottom: 3px solid #1a1a1a; padding-bottom: 24px; margin-bottom: 48px; }}
+  header h1 {{ font-size: 1.1rem; font-weight: 600; letter-spacing: .08em; color: #555; margin-bottom: 8px; }}
+  header p {{ font-size: 1.4rem; font-weight: 700; line-height: 1.5; }}
+  .meta {{ font-size: .8rem; color: #888; margin-top: 8px; }}
+  .section-title {{ font-size: .75rem; font-weight: 700; letter-spacing: .12em; color: #888; text-transform: uppercase; margin-bottom: 20px; }}
+  .agent-card {{ background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 20px; overflow: hidden; }}
+  .agent-card.error {{ border-left: 4px solid #e55; }}
+  .agent-header {{ display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; background: #fafafa; border-bottom: 1px solid #e0e0e0; }}
+  .agent-name {{ font-weight: 700; font-size: .95rem; }}
+  .agent-status {{ font-size: .75rem; color: #888; }}
+  .agent-body {{ padding: 20px; font-size: .9rem; }}
+  .agent-body h1, .agent-body h2, .agent-body h3 {{ margin: 1em 0 .5em; font-weight: 700; }}
+  .agent-body h2 {{ font-size: 1.05rem; border-bottom: 1px solid #eee; padding-bottom: 4px; }}
+  .agent-body h3 {{ font-size: .95rem; color: #444; }}
+  .agent-body ul {{ padding-left: 1.4em; margin: .5em 0; }}
+  .agent-body li {{ margin-bottom: .3em; }}
+  .agent-body strong {{ font-weight: 700; }}
+  .agent-body hr {{ border: none; border-top: 1px solid #eee; margin: 1em 0; }}
+  .final {{ background: #1a1a1a; color: #f5f5f0; border-radius: 8px; padding: 36px; margin-top: 48px; }}
+  .final .section-title {{ color: #aaa; }}
+  .final-body {{ font-size: 1rem; line-height: 1.9; margin-top: 16px; }}
+  .final-body h1, .final-body h2, .final-body h3 {{ color: #fff; margin: 1.2em 0 .5em; }}
+  .final-body h2 {{ font-size: 1.1rem; border-bottom: 1px solid #444; padding-bottom: 4px; }}
+  .final-body ul {{ padding-left: 1.4em; margin: .5em 0; }}
+  .final-body li {{ margin-bottom: .3em; }}
+  .final-body strong {{ color: #fff; }}
+  .final-body hr {{ border: none; border-top: 1px solid #444; margin: 1em 0; }}
+  p {{ margin: .6em 0; }}
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>クリエイティブアウトプット</h1>
+    <p>{html_module.escape(self.original_task)}</p>
+    <div class="meta">生成日時：{generated_at}</div>
+  </header>
+
+  <div class="section-title">各エージェントのアウトプット</div>
+  {agent_sections}
+
+  <div class="final">
+    <div class="section-title">ECDファイナルディレクション</div>
+    <div class="final-body">{md_to_html(self.final_answer)}</div>
+  </div>
+</div>
+</body>
+</html>"""
 
 
 class SpecialistAgent:
