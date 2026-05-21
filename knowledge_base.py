@@ -3,10 +3,12 @@ Knowledge Base — ファイル読み込みモジュール
 
 knowledge/ フォルダに置いた PDF・PPT・PPTX・TXT ファイルを自動で読み込み、
 エージェントチームの前提知識として提供する。
+Bear メモも tags/query で追加できる。
 """
 
 import os
 from pathlib import Path
+import bear_notes
 
 KNOWLEDGE_DIR = Path(__file__).parent / "knowledge"
 
@@ -51,11 +53,10 @@ def _read_text(path: Path) -> str:
         return f"[テキスト読み込みエラー: {e}]"
 
 
-def load() -> str:
+def load(bear_tags: list[str] | None = None, bear_query: str | None = None) -> str:
     """
-    knowledge/ フォルダ内の全ファイルを読み込み、
-    エージェントに渡す文字列として返す。
-    ファイルが存在しない場合は空文字列を返す。
+    knowledge/ フォルダ内の全ファイルを読み込み、エージェントに渡す文字列を返す。
+    bear_tags / bear_query を指定すると Bear メモも追加される。
     """
     if not KNOWLEDGE_DIR.exists():
         return ""
@@ -82,6 +83,10 @@ def load() -> str:
             label = f.relative_to(KNOWLEDGE_DIR)
             sections.append(f"### {label}\n{content}")
 
+    bear_section = bear_notes.load_for_knowledge(tags=bear_tags, query=bear_query)
+    if bear_section:
+        sections.append(bear_section)
+
     if not sections:
         return ""
 
@@ -96,17 +101,24 @@ def load() -> str:
 
 def summary() -> str:
     """読み込んだファイルの一覧を返す（起動時の確認用）。"""
+    lines = []
+
     if not KNOWLEDGE_DIR.exists():
-        return "knowledge/ フォルダが存在しません。"
+        lines.append("knowledge/ フォルダが存在しません。")
+    else:
+        files = sorted(
+            f for f in KNOWLEDGE_DIR.rglob("*")
+            if f.is_file() and f.suffix.lower() in SUPPORTED
+        )
+        if not files:
+            lines.append("knowledge/ フォルダにファイルがありません。")
+        else:
+            lines.append("読み込み済みファイル:")
+            lines += [f"  - {f.relative_to(KNOWLEDGE_DIR)}" for f in files]
 
-    files = sorted(
-        f for f in KNOWLEDGE_DIR.rglob("*")
-        if f.is_file() and f.suffix.lower() in SUPPORTED
-    )
+    if bear_notes.is_available():
+        lines.append("Bear: 利用可能（bear_tags / bear_query で検索可能）")
+    else:
+        lines.append("Bear: 未検出（macOS の Bear アプリが必要）")
 
-    if not files:
-        return "knowledge/ フォルダにファイルがありません。"
-
-    return "読み込み済みファイル:\n" + "\n".join(
-        f"  - {f.relative_to(KNOWLEDGE_DIR)}" for f in files
-    )
+    return "\n".join(lines)
