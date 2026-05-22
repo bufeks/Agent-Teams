@@ -3,3 +3,8 @@ __pycache__/
 *.pyo
 .env
 output/
+
+# 案件固有ファイル — コミットしない
+knowledge/projects/
+briefings/
+clients/
