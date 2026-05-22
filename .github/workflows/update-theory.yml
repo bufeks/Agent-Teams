@@ -1,0 +1,36 @@
+name: Update Theory HTML
+
+on:
+  push:
+    branches:
+      - claude/verify-agent-team-feature-rpdY0
+    paths:
+      - 'knowledge/宮崎太郎のクリエイティブ論/**'
+      - 'main.py'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate theory HTML
+        run: python main.py --theory
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          publish_branch: gh-pages
+          commit_message: "chore: auto-update theory HTML [skip ci]"
