@@ -22,6 +22,7 @@ import knowledge_base
 from agent_team import CreativeTeam
 
 OUTPUT_DIR = Path(__file__).parent / "output"
+DOCS_DIR = Path(__file__).parent / "docs"
 THEORY_DIR = Path(__file__).parent / "knowledge" / "宮崎太郎のクリエイティブ論"
 
 SUPPORTED_BRIEF_EXTS = {".pdf", ".ppt", ".pptx", ".txt", ".md"}
@@ -195,8 +196,11 @@ def generate_theory_html() -> Path:
 </html>"""
 
     OUTPUT_DIR.mkdir(exist_ok=True)
-    out = OUTPUT_DIR / "theory.html"
+    DOCS_DIR.mkdir(exist_ok=True)
+    out = DOCS_DIR / "index.html"
     out.write_text(html_content, encoding="utf-8")
+    # ローカルプレビュー用にも保存
+    (OUTPUT_DIR / "theory.html").write_text(html_content, encoding="utf-8")
     return out
 
 
