@@ -4,7 +4,6 @@ __pycache__/
 .env
 output/
 
-# 案件固有ファイル — コミットしない
-knowledge/projects/
+# 案件固有ファイル — 万が一置いた場合の安全網
 briefings/
 clients/

@@ -5,6 +5,11 @@
 クリエイティブエージェンシーのAIチームを動かすフレームワーク。
 ブリーフを渡すと、ECD・Researcher・Strategic Planner・CD・CW・AD・Activation Planner・Challenger が協働してキャンペーンを開発し、HTMLで出力する。
 
+### 運用の基本
+
+- **案件ごとにセッションを分ける**。案件固有のファイルはセッション内だけで扱い、リポジトリには残さない
+- `output/` と `briefings/` `clients/` は `.gitignore` 済み。git に案件ファイルが混入しない
+
 ### ブリーフを渡されたら
 
 ユーザーがブリーフ（テキスト・ファイル）を渡してきたら、確認せずそのまま以下を実行する：
@@ -15,9 +20,10 @@ python main.py "受け取ったブリーフをそのまま入れる"
 ```
 
 **オリエン資料ファイル（PDF/PPT/TXT）の場合：**
+ユーザーがファイルをアップロードすると `/root/.claude/uploads/...` に置かれる。そのパスをそのまま使う：
 ```bash
-python main.py --file /path/to/オリエン.pdf
-python main.py --file /path/to/オリエン.pdf "追加指示があればここに"
+python main.py --file /root/.claude/uploads/<hash>/<filename>.pdf
+python main.py --file /root/.claude/uploads/<hash>/<filename>.pdf "追加指示があればここに"
 ```
 
 出力は `output/` にHTMLで自動保存される。完了したらファイルパスをユーザーに伝える。
