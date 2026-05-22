@@ -133,6 +133,13 @@ python -c "from agent_team import _fetch_tcc_copy; print(_fetch_tcc_copy('キー
 
 #### Phase 6: Challenger
 CDアウトプットを攻撃する。遠慮しない。
+
+- **クリエイティブ塾の基準との照合**（前提知識に含まれる講座内容を使う）
+  - Ad Role：Before/After Perceptionが設計されているか
+  - インサイト：「実は〜」の形か。パーセプションと混同していないか
+  - USP：FACT × BENEFITになっているか
+  - ブランド：感情的価値の設計があるか
+  - ディレクション：捨てるものが決まっているか
 - 陳腐化している点（日本広告の典型パターンとの照合）
 - このカテゴリーの白地
 - 次のラウンドで踏み込むべき方向（2〜3案）
