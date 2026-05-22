@@ -45,6 +45,7 @@ class TeamResult:
     original_task: str
     agent_results: list[AgentResult] = field(default_factory=list)
     final_answer: str = ""
+    creative_brief: dict = field(default_factory=dict)
 
     def summary(self) -> str:
         lines = [f"=== Creative Output: {self.original_task} ===\n"]
@@ -69,6 +70,52 @@ class TeamResult:
             t = re.sub(r"\n{2,}", "</p><p>", t)
             t = re.sub(r"\n", "<br>", t)
             return f"<p>{t}</p>"
+
+        def brief_html(cb: dict) -> str:
+            if not cb:
+                return ""
+            LEFT = [
+                ("Brand Name", "brand_name"),
+                ("Brand Philosophy / Brand Purpose", "brand_philosophy"),
+                ("Brand Slogan", "brand_slogan"),
+                ("Brand Promise", "brand_promise"),
+                ("Business Goal", "business_goal"),
+                ("Ad Role", "ad_role"),
+                ("Problem", "problem"),
+                ("Competitor", "competitor"),
+                ("Unique Selling Proposition", "usp"),
+                ("Fact", "fact"),
+            ]
+            RIGHT = [
+                ("Target", "target"),
+                ("Target Insight", "target_insight"),
+                ("Social Insight", "social_insight"),
+                ("Before Perception", "before_perception"),
+                ("After Perception", "after_perception"),
+                ("Tone & Manner", "tone_and_manner"),
+                ("Campaign Concept", "campaign_concept"),
+                ("Campaign Tagline", "campaign_tagline"),
+                ("Key Visual", "key_visual"),
+                ("Catch Copy", "catch_copy"),
+            ]
+            cells = ""
+            for (ll, lk), (rl, rk) in zip(LEFT, RIGHT):
+                lv = cb.get(lk, "")
+                rv = cb.get(rk, "")
+                lc = "tbd" if lv in ("", "TBD") else ""
+                rc = "tbd" if rv in ("", "TBD") else ""
+                cells += f"""<div class="brief-cell">
+  <div class="brief-label">{html_module.escape(ll)}</div>
+  <div class="brief-value {lc}">{html_module.escape(lv or "—")}</div>
+</div>
+<div class="brief-cell">
+  <div class="brief-label">{html_module.escape(rl)}</div>
+  <div class="brief-value {rc}">{html_module.escape(rv or "—")}</div>
+</div>"""
+            return f"""<div class="brief-wrap">
+  <div class="brief-title">C R E A T I V E &nbsp; B R I E F</div>
+  <div class="brief-grid">{cells}</div>
+</div>"""
 
         generated_at = datetime.now().strftime("%Y年%m月%d日 %H:%M")
         agent_sections = ""
@@ -122,6 +169,13 @@ class TeamResult:
   .final-body strong {{ color: #fff; }}
   .final-body hr {{ border: none; border-top: 1px solid #444; margin: 1em 0; }}
   p {{ margin: .6em 0; }}
+  .brief-wrap {{ background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 36px; margin-bottom: 48px; }}
+  .brief-title {{ font-size: .75rem; font-weight: 700; letter-spacing: .2em; text-align: center; margin-bottom: 28px; color: #1a1a1a; }}
+  .brief-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid #ccc; border-left: 1px solid #ccc; }}
+  .brief-cell {{ border-right: 1px solid #ccc; border-bottom: 1px solid #ccc; padding: 12px 16px; font-size: .85rem; line-height: 1.6; }}
+  .brief-label {{ font-weight: 700; color: #c0392b; font-size: .78rem; letter-spacing: .04em; margin-bottom: 4px; }}
+  .brief-value {{ color: #1a1a1a; white-space: pre-wrap; }}
+  .brief-value.tbd {{ color: #aaa; font-style: italic; }}
 </style>
 </head>
 <body>
@@ -131,6 +185,8 @@ class TeamResult:
     <p>{html_module.escape(self.original_task)}</p>
     <div class="meta">生成日時：{generated_at}</div>
   </header>
+
+  {brief_html(self.creative_brief)}
 
   <div class="section-title">各エージェントのアウトプット</div>
   {agent_sections}
@@ -820,6 +876,46 @@ class CreativeTeam:
       5. ECD delivers final direction (single Claude call)
     """
 
+    ECD_CREATIVE_BRIEF_SYSTEM = (
+        "あなたはECDだ。クライアントのブリーフを受け取り、Creative Briefを作成する。\n\n"
+        "以下のJSON形式だけで出力せよ。説明文・前置き・コードブロック記法は不要。JSONのみ。\n\n"
+        "{\n"
+        '  "brand_name": "ブランド名",\n'
+        '  "brand_philosophy": "ブランドの哲学・社会的役割",\n'
+        '  "brand_slogan": "ブランドの宣誓（既存または提案）",\n'
+        '  "brand_promise": "ブランドが生活者に約束すること",\n'
+        '  "business_goal": "ビジネスとして目指すゴールイメージ",\n'
+        '  "ad_role": "ビジネスゴールを叶えるために広告が果たす役割",\n'
+        '  "problem": "商品・ブランドの抱える課題",\n'
+        '  "competitor": "競合商品・競合の特徴・競合との差",\n'
+        '  "usp": "唯一無二の提案・競合優位点（FACTをBENEFITに翻訳した消費者への約束）",\n'
+        '  "fact": "USPを裏付ける事実・証拠",\n'
+        '  "target": "ターゲット（デモグラ＋サイコグラフィクス）",\n'
+        '  "target_insight": "ターゲットの潜在的欲求（必ず「実は〜」の形で）",\n'
+        '  "social_insight": "社会環境・社会的な潜在的欲求・課題",\n'
+        '  "before_perception": "現状のブランドへの認識",\n'
+        '  "after_perception": "このキャンペーンで作りたい新たな認識",\n'
+        '  "tone_and_manner": "守るべきブランドのトーン・やってはいけないこと（地雷）",\n'
+        '  "campaign_concept": "TBD",\n'
+        '  "campaign_tagline": "TBD",\n'
+        '  "key_visual": "TBD",\n'
+        '  "catch_copy": "TBD"\n'
+        "}\n\n"
+        "campaign_concept・campaign_tagline・key_visual・catch_copy は後工程で埋めるため TBD のままにすること。\n"
+        "情報が不足しているフィールドは、ブリーフから合理的に推定して埋める。推定の場合は末尾に（推定）と付ける。"
+    )
+
+    ECD_CREATIVE_BRIEF_COMPLETE_SYSTEM = (
+        "あなたはECDだ。CDチームのクリエイティブアウトプットを受け取り、Creative Briefの残り4フィールドを埋める。\n\n"
+        "以下のJSON形式だけで出力せよ。JSONのみ。\n\n"
+        "{\n"
+        '  "campaign_concept": "キャンペーンのテーマ・コンセプト（一文で）",\n'
+        '  "campaign_tagline": "キャンペーンをまとめるコピー・タグライン",\n'
+        '  "key_visual": "象徴となるビジュアルアイコン・場面の描写",\n'
+        '  "catch_copy": "アテンションを獲得するための投げかけコピー"\n'
+        "}"
+    )
+
     ECD_ANALYZE_SYSTEM = (
         "あなたは日本トップクラスのクリエイティブエージェンシーのECDだ。\n\n"
         "クライアントから届いたブリーフを解剖し、チームを正しい方向へ向かわせる。\n\n"
@@ -883,6 +979,18 @@ class CreativeTeam:
         self.challenger = ChallengerAgent(self.client)
         self.knowledge = ""  # run() 時にブリーフ付きでロードする
 
+    def _parse_brief_json(self, text: str) -> dict:
+        import json
+        text = re.sub(r"```json\s*", "", text)
+        text = re.sub(r"```\s*", "", text)
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if not m:
+            return {}
+        try:
+            return json.loads(m.group())
+        except Exception:
+            return {}
+
     def _call_claude(self, system: str, content: str) -> str:
         response = self.client.messages.create(
             model=MODEL,
@@ -903,8 +1011,20 @@ class CreativeTeam:
 
         team_result = TeamResult(original_task=brief)
 
-        # Phase 0: ECD がブリーフを解析・書き換え
-        print("\n[Phase 0] ECD — ブリーフ解析中...")
+        # Phase 0: Creative Brief（戦略フィールド）生成
+        print("\n[Phase 0] ECD — Creative Brief 作成中...")
+        brief_json_text = self._call_claude(
+            self.ECD_CREATIVE_BRIEF_SYSTEM,
+            f"ブリーフ:\n{brief}" + (f"\n\nナレッジ:\n{self.knowledge}" if self.knowledge else ""),
+        )
+        team_result.creative_brief = self._parse_brief_json(brief_json_text)
+        if team_result.creative_brief:
+            print(f"  ✓ Creative Brief生成完了（{len(team_result.creative_brief)}フィールド）")
+        else:
+            print("  ⚠ Creative Brief JSONのパース失敗。処理続行。")
+
+        # Phase 0b: ECD がブリーフを解析・書き換え
+        print("  ECD — ブリーフ解析中...")
         ecd_analysis = self._call_claude(
             self.ECD_ANALYZE_SYSTEM,
             f"ブリーフ:\n{brief}" + (f"\n\nナレッジ:\n{self.knowledge}" if self.knowledge else ""),
@@ -967,5 +1087,18 @@ class CreativeTeam:
             f"元ブリーフ:\n{brief}\n\n{all_context}",
         )
         print(f"  ✓ ファイナルディレクション完了 ({len(team_result.final_answer)} chars)")
+
+        # Phase 5b: Creative Brief のクリエイティブ欄を補完
+        if team_result.creative_brief:
+            print("\n[Phase 5b] ECD — Creative Brief クリエイティブ欄補完中...")
+            complete_json_text = self._call_claude(
+                self.ECD_CREATIVE_BRIEF_COMPLETE_SYSTEM,
+                f"CDチームのアウトプット:\n{cd_result.output}\n\n"
+                f"ECDファイナルディレクション:\n{team_result.final_answer}",
+            )
+            creative_fields = self._parse_brief_json(complete_json_text)
+            if creative_fields:
+                team_result.creative_brief.update(creative_fields)
+                print("  ✓ Creative Brief 完成")
 
         return team_result
