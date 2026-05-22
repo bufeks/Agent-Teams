@@ -175,13 +175,73 @@ class SpecialistAgent:
             return AgentResult(agent_name=self.name, task=task, output=f"Error: {e}", success=False)
 
 
+_WEB_SEARCH_TOOL: dict[str, Any] = {
+    "type": "web_search_20250305",
+    "name": "web_search",
+    "max_uses": 5,
+}
+
+
+class WebSearchSpecialistAgent(SpecialistAgent):
+    """Specialist agent with Anthropic built-in web search (server-side, no extra API key)."""
+
+    def run(self, task: str, context: str = "", knowledge: str = "") -> AgentResult:
+        parts = []
+        if knowledge:
+            parts.append(knowledge)
+        if context:
+            parts.append(f"Team context:\n{context}")
+        parts.append(f"Your task:\n{task}")
+        user_content = "\n\n".join(parts)
+
+        messages: list[dict] = [{"role": "user", "content": user_content}]
+
+        try:
+            while True:
+                response = self.client.messages.create(
+                    model=MODEL,
+                    max_tokens=MAX_TOKENS,
+                    system=self.system_prompt,
+                    tools=[_WEB_SEARCH_TOOL],
+                    messages=messages,
+                )
+
+                for block in response.content:
+                    if getattr(block, "type", None) == "tool_use":
+                        query = getattr(block, "input", {}).get("query", "")
+                        if query:
+                            print(f"      [Web検索] {query}")
+
+                if response.stop_reason == "end_turn":
+                    output = next((b.text for b in response.content if b.type == "text"), "")
+                    return AgentResult(agent_name=self.name, task=task, output=output, success=True)
+
+                messages.append({"role": "assistant", "content": response.content})
+                tool_results = [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": "",
+                    }
+                    for block in response.content
+                    if getattr(block, "type", None) == "tool_use"
+                ]
+                if not tool_results:
+                    output = next((b.text for b in response.content if b.type == "text"), "")
+                    return AgentResult(agent_name=self.name, task=task, output=output, success=True)
+                messages.append({"role": "user", "content": tool_results})
+
+        except Exception as e:
+            return AgentResult(agent_name=self.name, task=task, output=f"Error: {e}", success=False)
+
+
 # ---------------------------------------------------------------------------
 # Tier 1 specialists — report directly to ECD
 # ---------------------------------------------------------------------------
 
 
 
-class ResearcherAgent(SpecialistAgent):
+class ResearcherAgent(WebSearchSpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
@@ -208,7 +268,10 @@ class ResearcherAgent(SpecialistAgent):
                 "■ 競合白地マップ（誰もやっていないこと一覧）\n"
                 "■ 言語化されていない生活者の本音\n"
                 "■ 最も挑発的な文化的緊張\n"
-                "■ クリエイティブチームへの一行インサイト（これだけ覚えておけ、という真実）"
+                "■ クリエイティブチームへの一行インサイト（これだけ覚えておけ、という真実）\n\n"
+                "【Web検索の使い方】\n"
+                "web_search ツールを使い、最新の競合事例・市場動向・SNSトレンド・生活者の声を検索して根拠を補強する。"
+                "古い知識だけに頼らず、今この瞬間の市場の空気を掴む。"
             ),
         )
 
@@ -503,7 +566,7 @@ class ArtDirectorAgent(SpecialistAgent):
         )
 
 
-class PRPlannerAgent(SpecialistAgent):
+class PRPlannerAgent(WebSearchSpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
@@ -535,7 +598,11 @@ class PRPlannerAgent(SpecialistAgent):
                 "■ ニュースフック（なぜ今、なぜこのブランドが話題になるか）\n"
                 "■ ターゲットメディア別アプローチ（TV／新聞／ウェブ／SNS）\n"
                 "■ 生活者参加・拡散の仕掛け\n"
-                "■ タイムライン（話題を持続させるシーケンス）"
+                "■ タイムライン（話題を持続させるシーケンス）\n\n"
+                "【Web検索の使い方】\n"
+                "web_search ツールを使い、直近の類似PR事例・話題になったキャンペーン・"
+                "各メディアの最新トレンドを検索して設計に反映する。"
+                "『今これが話題になっている』という生きた情報を根拠に組み立てる。"
             ),
         )
 
