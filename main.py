@@ -1,15 +1,18 @@
 """
 Creative Agency Team — ECD Demo
 
-The ECD (you) leads a full creative team:
-CD, Strategic Planner, CopyWriter, Planner, Researcher, Art Director.
-
-Run a preset brief or pass your own as a command-line argument.
+使い方:
+  python main.py "ブリーフテキスト"          # テキストブリーフ
+  python main.py --file オリエン.pdf          # ファイルをブリーフとして使用
+  python main.py --file オリエン.pdf "補足"  # ファイル + 追加指示
+  python main.py                              # デモブリーフ（最初の1件）
 """
 
 import os
 import re
 import sys
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +23,22 @@ from agent_team import CreativeTeam
 
 OUTPUT_DIR = Path(__file__).parent / "output"
 
+SUPPORTED_BRIEF_EXTS = {".pdf", ".ppt", ".pptx", ".txt", ".md"}
+
+
+def _read_brief_file(path: Path) -> str:
+    """オリエン資料ファイルを読んでテキストに変換する。"""
+    ext = path.suffix.lower()
+    if ext == ".pdf":
+        return knowledge_base._read_pdf(path)
+    elif ext in {".ppt", ".pptx"}:
+        return knowledge_base._read_ppt(path)
+    elif ext in {".txt", ".md"}:
+        return knowledge_base._read_text(path)
+    else:
+        print(f"Warning: 未対応の拡張子です: {ext}。テキストとして読み込みます。")
+        return knowledge_base._read_text(path)
+
 
 def _save_html(result, brief: str) -> Path:
     OUTPUT_DIR.mkdir(exist_ok=True)
@@ -28,6 +47,7 @@ def _save_html(result, brief: str) -> Path:
     path = OUTPUT_DIR / f"{timestamp}_{slug}.html"
     path.write_text(result.to_html(), encoding="utf-8")
     return path
+
 
 load_dotenv()
 
@@ -100,10 +120,40 @@ def run_custom(brief: str) -> None:
     print(f"\n出力: {path}")
 
 
+def _parse_args(argv: list[str]) -> str | None:
+    """
+    引数を解析してブリーフ文字列を返す。
+    --file / -f <path> [追加テキスト] に対応。
+    """
+    if not argv:
+        return None
+
+    if argv[0] in ("--file", "-f"):
+        if len(argv) < 2:
+            print("Error: --file の後にファイルパスを指定してください。")
+            sys.exit(1)
+        file_path = Path(argv[1])
+        if not file_path.exists():
+            print(f"Error: ファイルが見つかりません: {file_path}")
+            sys.exit(1)
+        print(f"オリエン資料を読み込み中: {file_path.name}")
+        brief = _read_brief_file(file_path)
+        if not brief.strip():
+            print(f"Error: ファイルからテキストを抽出できませんでした: {file_path}")
+            sys.exit(1)
+        extra = " ".join(argv[2:])
+        if extra:
+            brief = f"{brief}\n\n【追加指示】\n{extra}"
+        return brief
+
+    return " ".join(argv)
+
+
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        custom_brief = " ".join(sys.argv[1:])
-        run_custom(custom_brief)
+    args = sys.argv[1:]
+    if args:
+        brief = _parse_args(args)
+        run_custom(brief)
     else:
         # デフォルトは最初のブリーフのみ実行（コスト節約のため）
         run_demo(brief_index=0)
