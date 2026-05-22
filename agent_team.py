@@ -178,7 +178,7 @@ class SpecialistAgent:
 _WEB_SEARCH_TOOL: dict[str, Any] = {
     "type": "web_search_20250305",
     "name": "web_search",
-    "max_uses": 5,
+    "max_uses": 10,
 }
 
 
@@ -276,7 +276,7 @@ class ResearcherAgent(WebSearchSpecialistAgent):
         )
 
 
-class StrategicPlannerAgent(SpecialistAgent):
+class StrategicPlannerAgent(WebSearchSpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
@@ -306,7 +306,10 @@ class StrategicPlannerAgent(SpecialistAgent):
                 "■ 文化的緊張（このブランドが介入すべき社会の摩擦）\n"
                 "■ 異業種移植アイデア（業界／構造的メカニズム／このブリーフへの応用 を各事例で）\n"
                 "■ 戦略テリトリー（長期プラットフォームの骨格）\n"
-                "■ クリエイティブチームへの挑発的な問い（思考を解放する一文）"
+                "■ クリエイティブチームへの挑発的な問い（思考を解放する一文）\n\n"
+                "【Web検索の使い方】\n"
+                "web_search ツールを使い、異業種移植のための最新事例・戦略的成功事例・市場構造の変化を検索する。"
+                "遠い業界（軍事・宗教・ゲーム・医療など）の成功メカニズムを検索で実例から掘り起こし、戦略に移植する。"
             ),
         )
 
@@ -857,7 +860,7 @@ class CreativeTeam:
         self.strategic_planner = StrategicPlannerAgent(self.client)
         self.cd = CDAgent(self.client)
         self.challenger = ChallengerAgent(self.client)
-        self.knowledge = knowledge_base.load()
+        self.knowledge = ""  # run() 時にブリーフ付きでロードする
 
     def _call_claude(self, system: str, content: str) -> str:
         response = self.client.messages.create(
@@ -874,6 +877,8 @@ class CreativeTeam:
             print(f"\n{'='*60}")
             print(f"ECD Brief: {brief}")
             print(f"{'='*60}")
+
+        self.knowledge = knowledge_base.load(brief=brief)
 
         team_result = TeamResult(original_task=brief)
 
