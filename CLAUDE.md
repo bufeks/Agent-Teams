@@ -32,8 +32,11 @@ python -c "import knowledge_base; print(knowledge_base._read_pdf('/root/.claude/
 
 フェーズを順番に実行し、各エージェントとして思考・出力する。
 
-#### Phase 0: Creative Brief 作成（ECD）
-以下20フィールドのCreative Briefを作成する。
+#### Phase 0: Creative Brief 作成（ECD）【必須・最初のアウトプット】
+
+**ブリーフを読んだら、他の何より先にCreative Briefをユーザーに提示する。これが出るまで次のフェーズに進まない。**
+
+以下20フィールドのCreative Briefを作成し、表形式でそのままチャットに出力する。
 campaign_concept / campaign_tagline / key_visual / catch_copy は後工程で埋めるため **TBD** のままにする。
 
 | フィールド | 内容 |
