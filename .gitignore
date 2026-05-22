@@ -7,3 +7,6 @@ output/
 # 案件固有ファイル — 万が一置いた場合の安全網
 briefings/
 clients/
+
+# 一時ファイル共有（レビュー後に削除する）
+# tmp/ は意図的にignoreしない
