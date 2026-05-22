@@ -311,7 +311,7 @@ class StrategicPlannerAgent(SpecialistAgent):
         )
 
 
-class ActivationPlannerAgent(SpecialistAgent):
+class ActivationPlannerAgent(WebSearchSpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
@@ -338,7 +338,9 @@ class ActivationPlannerAgent(SpecialistAgent):
                 "■ フェーズ別チャネル戦略（ローンチ／持続／増幅）\n"
                 "■ キーアクティベーション（それだけでメディア獲得できる施策）\n"
                 "■ 日本固有の接点を活かしたサプライズ施策\n"
-                "■ 各チャネルのKPI"
+                "■ 各チャネルのKPI\n\n"
+                "【Web検索の使い方】\n"
+                "web_search ツールを使い、最新のアクティベーション事例・ブランド体験設計・日本市場の消費者動向を検索して施策の精度を上げる。"
             ),
         )
 
@@ -347,7 +349,7 @@ class ActivationPlannerAgent(SpecialistAgent):
 # Challenger — attacks creative work for being safe / predictable
 # ---------------------------------------------------------------------------
 
-class ChallengerAgent(SpecialistAgent):
+class ChallengerAgent(WebSearchSpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
@@ -376,7 +378,9 @@ class ChallengerAgent(SpecialistAgent):
                 "■ 陳腐化している点（具体的に、日本広告の典型パターンとの照合を含む）\n"
                 "■ このカテゴリーの「誰もやっていない白地」\n"
                 "■ 次のラウンドで絶対に踏み込むべき方向（2〜3案）\n\n"
-                "遠慮しない。礼儀正しい批評は仕事の邪魔だ。"
+                "遠慮しない。礼儀正しい批評は仕事の邪魔だ。\n\n"
+                "【Web検索の使い方】\n"
+                "web_search ツールを使い、最新の受賞事例・競合カテゴリーのトレンド・国内外の尖った仕事を検索して批評の精度を上げる。"
             ),
         )
 
@@ -455,7 +459,7 @@ _TCC_TOOL_DEF = {
 }
 
 
-class CopyWriterAgent(SpecialistAgent):
+class CopyWriterAgent(WebSearchSpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
@@ -483,7 +487,9 @@ class CopyWriterAgent(SpecialistAgent):
                 "【アウトプット形式】\n"
                 "複数の方向性（理性・感情・意外性）でコピーを提案し、"
                 "各コピーについて「なぜこの言葉か」を一言で説明する。"
-                "ジャーゴンとクリシェは禁止。すべての一行が存在理由を持つこと。"
+                "ジャーゴンとクリシェは禁止。すべての一行が存在理由を持つこと。\n\n"
+                "【Web検索の使い方】\n"
+                "web_search ツールも使い、最新の広告コピートレンド・海外受賞コピー・SNSでバズった言葉を検索して着想の幅を広げる。"
             ),
         )
 
@@ -505,20 +511,24 @@ class CopyWriterAgent(SpecialistAgent):
                     max_tokens=MAX_TOKENS,
                     thinking={"type": "adaptive"},
                     system=self.system_prompt,
-                    tools=[_TCC_TOOL_DEF],
+                    tools=[_TCC_TOOL_DEF, _WEB_SEARCH_TOOL],
                     messages=messages,
                 )
 
-                # ツール呼び出しがない場合 → 最終アウトプット
+                if response.stop_reason == "end_turn":
+                    output = next((b.text for b in response.content if b.type == "text"), "")
+                    return AgentResult(agent_name=self.name, task=task, output=output, success=True)
+
                 if response.stop_reason != "tool_use":
                     output = next((b.text for b in response.content if b.type == "text"), "")
                     return AgentResult(agent_name=self.name, task=task, output=output, success=True)
 
-                # ツール実行ループ
                 messages.append({"role": "assistant", "content": response.content})
                 tool_results = []
                 for block in response.content:
-                    if block.type == "tool_use":
+                    if block.type != "tool_use":
+                        continue
+                    if block.name == "search_tcc_copy":
                         kw = block.input.get("keyword", "")
                         print(f"      [TCC検索] キーワード：「{kw}」")
                         result_text = _fetch_tcc_copy(kw)
@@ -527,13 +537,25 @@ class CopyWriterAgent(SpecialistAgent):
                             "tool_use_id": block.id,
                             "content": result_text,
                         })
+                    elif block.name == "web_search":
+                        query = block.input.get("query", "")
+                        if query:
+                            print(f"      [Web検索] {query}")
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": "",
+                        })
+                if not tool_results:
+                    output = next((b.text for b in response.content if b.type == "text"), "")
+                    return AgentResult(agent_name=self.name, task=task, output=output, success=True)
                 messages.append({"role": "user", "content": tool_results})
 
         except Exception as e:
             return AgentResult(agent_name=self.name, task=task, output=f"Error: {e}", success=False)
 
 
-class ArtDirectorAgent(SpecialistAgent):
+class ArtDirectorAgent(WebSearchSpecialistAgent):
     def __init__(self, client: anthropic.Anthropic):
         super().__init__(
             client=client,
@@ -561,7 +583,9 @@ class ArtDirectorAgent(SpecialistAgent):
                 "■ タイポグラフィの人格\n"
                 "■ 撮影・制作スタイル（写真/映像/グラフィック）\n"
                 "■ ヒーロービジュアルの場面描写（作る前から見えるように）\n"
-                "■ このカテゴリーでやってはいけないビジュアルの禁じ手"
+                "■ このカテゴリーでやってはいけないビジュアルの禁じ手\n\n"
+                "【Web検索の使い方】\n"
+                "web_search ツールを使い、最新のビジュアルトレンド・D&AD/ACC受賞ビジュアル・国内外のデザイン動向を検索して視覚的判断の精度を上げる。"
             ),
         )
 
