@@ -41,7 +41,7 @@ Creative Briefは「埋める」ものではなく「解剖する」ものだ。
 **この段階でナチュラルに書けないフィールドは、むしろ埋めないほうがいい。後工程で可能性が広がる。**
 
 以下20フィールドを表形式でチャットに出力する。
-campaign_concept / campaign_tagline / key_visual / catch_copy は後工程で埋めるため **TBD** のままにする。
+campaign_concept / campaign_tagline / key_visual / catch_copy は **Phase 0 では存在しないフィールド**として扱い、必ず `TBD` の文字列だけを書く。ヒント・方向性示唆・仮タイトル・括弧書きを一切入れない。これらは Phase 5〜7 で初めて出力する。
 
 | フィールド | 内容 |
 |---|---|
