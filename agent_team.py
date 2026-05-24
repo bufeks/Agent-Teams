@@ -462,7 +462,7 @@ class ChallengerAgent(WebSearchSpecialistAgent):
                 "4. クリエイティブセミナーの基準：前提知識に含まれるクリエイティブ塾の講座内容（Ad Role・インサイト・USP・ブランド・ディレクション）と照合し、"
                 "   このアウトプットがその水準を満たしているか問う。\n\n"
                 "【クリエイティブ塾の基準で照合せよ（前提知識として渡されている）】\n"
-                "・Ad Role：広告の役割は「認知」か「態度変容」か「行動変容」か明確に定義されているか。Before/After Perceptionが設計されているか\n"
+                "・Ad Role：「認知」「態度変容」というカテゴリーラベルで設定されていたら即指摘。Ad Roleは「〇〇という認識の人を〇〇という認識へ変える」という動詞でなければならない。before_perception→ad_role→after_perceptionが三角形として整合しているか。どれか一つでもズレていたら★\n"
                 "・インサイト：「実は〜」の形になっているか。「〜と思っている」レベルのパーセプションと混同していないか\n"
                 "・USP：FACTとBENEFITの掛け算になっているか。FACTのない主張に乗っていないか\n"
                 "・ブランド：断片的な接点情報が一貫したイメージを積み上げているか。感情的価値の設計があるか\n"
@@ -908,7 +908,7 @@ class CreativeTeam:
         '  "brand_slogan": "ブランドの宣誓（既存スローガンがあれば記載）",\n'
         '  "brand_promise": "FACTから導ける消費者への約束（FACTがなければ★）",\n'
         '  "business_goal": "KPIを含む具体的ゴール（曖昧なら★）",\n'
-        '  "ad_role": "広告が起こすべき状態変化（認知/態度変容/来店 等 具体的に）",\n'
+        '  "ad_role": "【必ず動詞で書く】「〇〇という認識の人を、〇〇という認識へ変える」。「認知」「態度変容」という単語で書くことを禁じる。before_perception→ad_role→after_perceptionが三角形として整合しているか確認。整合しなければ★",\n'
         '  "problem": "本当の課題（クライアントが言っていることと異なれば★で指摘）",\n'
         '  "competitor": "競合と差異（差異が本当にないなら正直に書く）",\n'
         '  "usp": "FACT × BENEFIT（FACTのない主張には★）",\n'
@@ -917,7 +917,7 @@ class CreativeTeam:
         '  "target_insight": "仮説A：実は〜 / 仮説B：実は〜（確信があるものだけ書く。ないなら複数仮説のまま）",\n'
         '  "social_insight": "根拠のある社会観察（思い込みなら★）",\n'
         '  "before_perception": "調査・観察に基づく現状認識（憶測なら★）",\n'
-        '  "after_perception": "この広告で本当に変えられる認識か（無理なら★）",\n'
+        '  "after_perception": "この広告で本当に変えられる認識か（無理なら★）。ad_roleが起こす変化と一致しているか",\n'
         '  "tone_and_manner": "カテゴリーの陳腐パターンを禁じ手にできているか",\n'
         '  "campaign_concept": "TBD",\n'
         '  "campaign_tagline": "TBD",\n'

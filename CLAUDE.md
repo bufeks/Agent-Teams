@@ -50,7 +50,7 @@ campaign_concept / campaign_tagline / key_visual / catch_copy は **Phase 0 で�
 | brand_slogan | ブランドの宣誓 |
 | brand_promise | ブランドが生活者に約束すること（FACTから導けるか確認。できなければ★） |
 | business_goal | ビジネスゴール（KPIが曖昧なら★を立てる） |
-| ad_role | 広告が果たす役割（「認知」「態度変容」「来店」など状態変化を具体的に） |
+| ad_role | 「認知」「態度変容」という単語で書くことを禁じる。必ず動詞で書く：「〇〇という認識を持つ人を、〇〇という認識へ変える」。before_perception → ad_role → after_perception が三角形として整合しているか確認。整合しなければ★ |
 | problem | 商品・ブランドの課題（クライアントが言っていることと、本当の課題は一致しているか） |
 | competitor | 競合と差異（「差異がない」なら正直に書く） |
 | usp | FACT × BENEFIT = 消費者への約束（FACTがない主張には★） |
@@ -59,7 +59,7 @@ campaign_concept / campaign_tagline / key_visual / catch_copy は **Phase 0 で�
 | target_insight | 潜在的欲求（「実は〜」の形で複数案。「〜と思っている」レベルはパーセプションであり、インサイトではない。確信が持てないものは「仮説：」と前置きして書く） |
 | social_insight | 社会環境・社会的課題（根拠のある観察か、思い込みか） |
 | before_perception | 現状のブランドへの認識（調査・観察に基づいているか。憶測なら★） |
-| after_perception | このキャンペーンで作りたい認識（before→afterの変化が本当に広告で起こせるか） |
+| after_perception | このキャンペーンで作りたい認識（before→afterの変化が本当に広告で起こせるか。ad_roleと一致しているか） |
 | tone_and_manner | 守るべきトーン・禁じ手（このカテゴリーの陳腐な表現パターンを禁じ手にできているか） |
 | campaign_concept | TBD |
 | campaign_tagline | TBD |
