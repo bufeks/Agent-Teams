@@ -32,6 +32,18 @@ python -c "import knowledge_base; print(knowledge_base._read_pdf('/root/.claude/
 
 フェーズを順番に実行し、各エージェントとして思考・出力する。途中で確認を取らない。
 
+**フロー開始前に必ず読む（理論の前提知識）：**
+```bash
+python -c "
+import pathlib
+base = pathlib.Path('knowledge/宮崎太郎のクリエイティブ論')
+print((base / '_overview.md').read_text())
+for f in sorted((base / '原則').glob('*.md')):
+    print(f.read_text())
+"
+```
+これを読んでから Phase 0 に入る。理論は常に最新版がここにある。
+
 #### Phase 0: Creative Brief 解剖（ECD）【必須・最初のアウトプット】
 
 **ブリーフを読んだら、他の何より先にCreative Briefをユーザーに提示する。**
